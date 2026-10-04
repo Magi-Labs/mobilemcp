@@ -5,8 +5,10 @@ import { refSchema, actionObservationSchema, bridgeCall } from './helpers.js';
 export const KEYS = ['back', 'home', 'recents', 'notifications', 'quick_settings', 'power', 'lock', 'enter', 'dismiss_notifications'] as const;
 export function registerInteractTools(mcp: McpServer, bridge: Bridge): void {
   mcp.registerTool('tap', {
-    description: 'Tap an @ref (preferred) or screen coordinates. Uses the accessibility click of the node or its nearest clickable ancestor, otherwise a real touch at its center. longPress:true for long press, doubleTap:true for double tap.',
+    description: 'Tap by visible text (text="Send"), by @ref, or by coordinates. text matches the label exactly, then by prefix, then substring, preferring interactive elements; ambiguity errors list the refs. timeout waits for the text to appear first, so "tap after loading" is one call. Uses the node click (or nearest clickable ancestor), otherwise a real touch. longPress / doubleTap options.',
     inputSchema: {
+      text: z.string().max(300).optional().describe('Visible text, content description or row label of the target.'),
+      timeout: z.number().int().min(0).max(60000).optional().describe('With text: wait up to this many ms for it to appear (default 0).'),
       ref: refSchema.optional(),
       x: z.number().int().nonnegative().optional().describe('Screen x in pixels; requires y. Fallback when no node exists.'),
       y: z.number().int().nonnegative().optional(),
@@ -16,9 +18,11 @@ export function registerInteractTools(mcp: McpServer, bridge: Bridge): void {
     },
   }, async args => bridgeCall(bridge, 'interact.tap', args));
   mcp.registerTool('type_text', {
-    description: 'Type into an editable @ref or the focused field. clear:true replaces existing text; submit:true presses the keyboard action (enter/send/search) afterwards.',
+    description: 'Type into a field chosen by field (hint/label substring, e.g. "Search", "Message"), by @ref, or the focused field. clear:true replaces existing text; submit:true presses the keyboard action (enter/send/search) afterwards.',
     inputSchema: {
       text: z.string().max(10000),
+      field: z.string().max(200).optional().describe('Hint, label or current text of the target field.'),
+      timeout: z.number().int().min(0).max(60000).optional().describe('Wait up to this many ms for the field to appear (default 3000).'),
       ref: refSchema.optional(),
       clear: z.boolean().optional().describe('Replace existing text. Default false (append).'),
       submit: z.boolean().optional(),
@@ -63,7 +67,7 @@ export function registerInteractTools(mcp: McpServer, bridge: Bridge): void {
   }, async args => bridgeCall(bridge, 'interact.pinch', args));
   mcp.registerTool('scroll_until', {
     description: 'Scroll a list (ref or main scrollable) page by page until text appears on screen, then return its @ref. Up to maxPages (default 10) within timeout.',
-    inputSchema: { text: z.string().min(1).max(300), ref: refSchema.optional(), direction: z.enum(['down', 'up', 'left', 'right']).optional(), maxPages: z.number().int().min(1).max(50).optional(), timeout: z.number().int().min(1000).max(60000).optional(), ...actionObservationSchema },
+    inputSchema: { text: z.string().min(1).max(300), ref: refSchema.optional(), direction: z.enum(['down', 'up', 'left', 'right']).optional(), maxPages: z.number().int().min(1).max(50).optional(), timeout: z.number().int().min(1000).max(60000).optional(), tap: z.boolean().optional().describe('Tap the match once found (find-and-open in one call).'), ...actionObservationSchema },
   }, async args => bridgeCall(bridge, 'interact.scrollUntil', args));
   mcp.registerTool('gesture', {
     description: 'Composable touch sequence executed as one continuous multi-finger touch. Atoms: down (x,y|ref), wait (ms), move (x,y|ref over ms, straight line; chain moves for curves), up. Sugar: tap, longpress (ms), swipe (toX,toY|toRef, ms). Steps with the same finger (default 0) form one stroke; different fingers run concurrently (pinch, rotate, two-finger swipe). Up to 10 fingers, 60 s total. Example long-press, drag to the screen edge, wait for the page flip, drop on a folder: [{type:"down",ref:"@4"},{type:"wait",ms:900},{type:"move",x:1068,y:1200,ms:300},{type:"wait",ms:700},{type:"move",x:288,y:462,ms:300},{type:"wait",ms:250},{type:"up"}]. Combine with keys, app launches, waits and snapshots in run_mobile_actions for anything longer.',

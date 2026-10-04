@@ -16,7 +16,10 @@ import org.json.JSONObject
  * Snapshots are versioned so a later call with `since` can return only changed/removed lines.
  */
 class ScreenObserver(private val svc: MobileAccessibilityService) {
-    class Rec(val key: String, val node: AccessibilityNodeInfo, val depth: Int, val parentKey: String?, val interactive: Boolean, val text: String, val line: String)
+    class Rec(val key: String, val node: AccessibilityNodeInfo, val depth: Int, val parentKey: String?, val interactive: Boolean, val text: String, val line: String, val rect: Rect, val label: String, val derived: Boolean)
+    /** Refs and screen rects of the lines returned by the latest snapshot, for Set-of-Mark screenshots. */
+    @Volatile var lastMarks: List<Pair<Int, Rect>> = emptyList()
+    @Volatile var fullBounds = false
 
     /** Ref numbering and snapshot baselines, kept per foreground package so refs survive a detour through another app. */
     private class RefState { val refByKey = HashMap<String, Int>(); val keyByRef = HashMap<Int, String>(); var nextRef = 1; val history = ArrayDeque<Pair<String, LinkedHashMap<Int, String>>>() }
@@ -49,7 +52,7 @@ class ScreenObserver(private val svc: MobileAccessibilityService) {
         if (roots.isEmpty() && windows.isEmpty()) svc.rootInActiveWindow?.let { roots.add("w0" to it) }
         val pkg = currentPackage()
         if (pkg != refPackage) { refPackage = pkg; state = states.getOrPut(pkg ?: "") { RefState() } }
-        val out = ArrayList<Rec>(256); val occurrence = HashMap<String, Int>()
+        val out = ArrayList<Rec>(256); val occurrence = HashMap<String, Int>(); keyParent.clear()
         for ((prefix, root) in roots) walk(root, 0, null, out, occurrence, prefix)
         return out
     }
@@ -79,10 +82,11 @@ class ScreenObserver(private val svc: MobileAccessibilityService) {
         if (include) {
             val base = "$prefix|$cls|$id|${if (node.isEditable) "" else text}|$desc"
             val n = occ.merge(base, 1, Int::plus)!!
-            key = "$base#$n"
+            key = "$base#$n"; keyParent[key] = parentKey
             // Clickable containers (list rows, cards) usually carry their label in children; surface it as ~"…".
             val derived = if ((node.isClickable || node.isLongClickable) && !node.isScrollable && text.isEmpty() && desc.isEmpty() && !node.isEditable) derivedLabel(node) else ""
-            out.add(Rec(key, node, depth, parentKey, interactive, "$text $desc $hint $id $derived", formatLine(node, cls, text, desc, hint, id, derived)))
+            val r = Rect(); node.getBoundsInScreen(r)
+            out.add(Rec(key, node, depth, parentKey, interactive, "$text $desc $hint $id $derived", formatLine(node, cls, text, desc, hint, id, derived), r, text.ifEmpty { desc.ifEmpty { derived } }, derived.isNotEmpty()))
         }
         for (i in 0 until node.childCount) { val child = node.getChild(i) ?: continue; walk(child, depth + 1, key ?: parentKey, out, occ, prefix) }
     }
@@ -102,21 +106,28 @@ class ScreenObserver(private val svc: MobileAccessibilityService) {
         return parts.joinToString(" · ")
     }
 
+    private val clickableRoles = setOf("button", "link", "imgbtn", "checkbox", "radio", "switch", "tab", "dropdown", "input")
+    /**
+     * Compact line: `role "text" (desc) hint:"…" #id [flags] (cx,cy)`. Clickability is implied by the role, ids are shown
+     * only for nodes without a label (icon buttons), bounds are the center unless `fullBounds` is set.
+     */
     private fun formatLine(n: AccessibilityNodeInfo, cls: String, text: String, desc: String, hint: String, id: String, derived: String): String {
-        val sb = StringBuilder(roleOf(cls, n))
+        val role = roleOf(cls, n)
+        val sb = StringBuilder(role)
         if (text.isNotEmpty()) sb.append(" \"").append(text.replace("\n", "⏎")).append('"')
         else if (derived.isNotEmpty()) sb.append(" ~\"").append(derived.replace("\n", " ")).append('"')
         if (desc.isNotEmpty() && desc != text) sb.append(" (").append(desc.replace("\n", " ")).append(')')
         if (n.isEditable && text.isEmpty() && hint.isNotEmpty()) sb.append(" hint:\"").append(hint).append('"')
-        if (id.isNotEmpty()) sb.append(" #").append(id.substringAfter('/'))
+        if (id.isNotEmpty() && text.isEmpty() && desc.isEmpty() && derived.isEmpty()) sb.append(" #").append(id.substringAfter('/'))
         val flags = ArrayList<String>(4)
-        if (n.isClickable) flags.add("clk"); if (n.isLongClickable) flags.add("long"); if (n.isEditable) flags.add("edit")
+        if (n.isClickable && role !in clickableRoles) flags.add("clk"); if (n.isLongClickable && !n.isClickable) flags.add("long")
         if (n.isCheckable) flags.add(if (n.isChecked) "checked" else "unchecked")
-        if (n.isSelected) flags.add("sel"); if (n.isFocused) flags.add("focus"); if (n.isScrollable) flags.add("scroll")
+        if (n.isSelected) flags.add("sel"); if (n.isFocused) flags.add("focus"); if (n.isScrollable && role != "list") flags.add("scroll")
         if (!n.isEnabled) flags.add("disabled"); if (n.isPassword) flags.add("pwd")
         if (flags.isNotEmpty()) sb.append(" [").append(flags.joinToString(" ")).append(']')
         val r = Rect(); n.getBoundsInScreen(r)
-        sb.append(" (").append(r.left).append(',').append(r.top).append(' ').append(r.width()).append('x').append(r.height()).append(')')
+        if (fullBounds) sb.append(" (").append(r.left).append(',').append(r.top).append(' ').append(r.width()).append('x').append(r.height()).append(')')
+        else sb.append(" (").append(r.centerX()).append(',').append(r.centerY()).append(')')
         return sb.toString()
     }
 
@@ -151,8 +162,19 @@ class ScreenObserver(private val svc: MobileAccessibilityService) {
         val query = params.optString("query", "").trim().lowercase()
         val scope = params.optString("scope", "")
         val interactiveOnly = params.optBoolean("interactiveOnly", false)
+        val verbose = params.optBoolean("verbose", false)
+        fullBounds = params.optString("bounds", "center") == "full"
 
         var recs: List<Rec> = collect()
+        // Row collapsing: a clickable row that already carries a derived label hides its plain-text children (they repeat the label).
+        if (!verbose) {
+            val collapsed = HashSet<String>()
+            recs = recs.filter { rec ->
+                val under = rec.parentKey != null && rec.parentKey in collapsed
+                if (rec.derived) collapsed.add(rec.key)
+                if (under && !rec.interactive) { collapsed.add(rec.key); false } else true
+            }
+        }
         if (scope.isNotEmpty()) {
             val scopeKey = keyByRef[parseRef(scope)] ?: fail("STALE_REF", "Scope $scope is unknown; take a new snapshot.")
             val included = HashSet<String>(); included.add(scopeKey)
@@ -164,22 +186,25 @@ class ScreenObserver(private val svc: MobileAccessibilityService) {
 
         val minDepth = recs.minOfOrNull { it.depth } ?: 0
         val lines = LinkedHashMap<Int, String>(); var chars = 0; var truncated = false; var index = offset
+        val marks = ArrayList<Pair<Int, Rect>>()
         while (index < recs.size) {
             val rec = recs[index]
             val ref = refByKey.getOrPut(rec.key) { state.nextRef++ }; keyByRef[ref] = rec.key
             val line = "@$ref ${" ".repeat((rec.depth - minDepth).coerceIn(0, 6))}${rec.line}"
             if (lines.size >= maxNodes || chars + line.length > maxChars) { truncated = true; break }
             lines[ref] = line; chars += line.length; index++
+            if (rec.interactive) marks.add(ref to rec.rect)
         }
+        lastMarks = marks
 
         val version = "v${++versionCounter}"
         val result = JSONObject()
             .put("version", version)
             .put("package", currentPackage())
-            .put("activity", svc.foregroundActivity?.takeIf { svc.foregroundPackage == currentPackage() })
+            .put("activity", svc.foregroundActivity?.takeIf { svc.foregroundPackage == currentPackage() }?.substringAfterLast('.'))
             .put("screen", screenInfo())
-            .put("keyboard", keyboardVisible())
             .put("total", recs.size)
+        if (keyboardVisible()) result.put("keyboard", true)
         activeWindowWithoutTree()?.let { result.put("noTree", true).put("window", it).put("hint", "The foreground window exposes no accessibility tree; use take_screenshot and coordinate taps, or press back.") }
         if (truncated) result.put("truncated", true).put("nextOffset", index)
         if (offset == 0) { history.addLast(version to lines); while (history.size > 6) history.removeFirst() }
@@ -228,6 +253,32 @@ class ScreenObserver(private val svc: MobileAccessibilityService) {
         if (offset + slice.length < all.length) r.put("truncated", true).put("nextOffset", offset + slice.length)
         return r
     }
+
+    /**
+     * Finds the node an agent means by `text`: exact label match first, then prefix, then substring, over text /
+     * description / derived row label. Interactive nodes win over plain text; ambiguity is an error listing refs.
+     */
+    @Synchronized
+    fun findByText(text: String, recs: List<Rec> = collect()): Rec {
+        val q = text.trim().lowercase(); if (q.isEmpty()) fail("BAD_ARGS", "text is empty")
+        fun label(r: Rec) = r.label.lowercase()
+        val tiers = listOf<(Rec) -> Boolean>({ label(it) == q }, { label(it).startsWith(q) }, { label(it).contains(q) }, { it.text.lowercase().contains(q) })
+        for (tier in tiers) {
+            val hits = recs.filter(tier)
+            if (hits.isEmpty()) continue
+            val interactive = hits.filter { it.interactive }
+            val pick = interactive.ifEmpty { hits }
+            if (pick.size == 1) return pick[0]
+            // Same label repeated inside one row (e.g. title + container): prefer the outermost interactive one.
+            val outer = pick.filter { p -> pick.none { o -> o !== p && isAncestor(o, p) } }
+            if (outer.size == 1) return outer[0]
+            fail("AMBIGUOUS_TEXT", "'$text' matches ${outer.size} elements: ${outer.take(6).joinToString(" | ") { refFor(it) }}. Use a ref.")
+        }
+        fail("TEXT_NOT_FOUND", "No visible element with text '$text'. Take a snapshot or use scroll_until.")
+    }
+
+    private fun isAncestor(a: Rec, b: Rec): Boolean { var k = b.parentKey; while (k != null) { if (k == a.key) return true; k = keyParent[k] } ; return false }
+    private val keyParent = HashMap<String, String?>()
 
     fun parseRef(s: String): Int = s.trim().removePrefix("@").toIntOrNull() ?: fail("BAD_REF", "Expected an @ref like @12, got '$s'.")
 

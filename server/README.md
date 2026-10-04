@@ -28,26 +28,26 @@ The accessibility route is what "use my phone like a normal user" means. ADB-lev
 | Group | Tools |
 | --- | --- |
 | Devices | `list_devices`, `select_device`, `get_device_info` (model, screen, battery, lock state, granted permissions, visible windows) |
-| Observe | `get_screen_snapshot` (bounded tree with persistent `@refs`; `query`, `scope`, `interactiveOnly`, paging, `since` deltas, optional image), `take_screenshot`, `read_text` (full text, untruncated), `wait_for_text` |
-| Act | `tap` (node action or real touch; long press, double tap), `type_text`, `scroll`, `scroll_until`, `swipe`, `drag` (long-press + move, optional waypoints with pauses for cross-page drags), `gesture` (composable `down`/`wait`/`move`/`up` steps, multi-finger: any touch sequence), `pinch`, `press_key`, `set_clipboard` |
+| Observe | `get_screen_snapshot` (bounded tree with persistent `@refs`; rows collapse to one `~"title · subtitle"` line; `query`, `scope`, paging, `since` deltas), `take_screenshot` (`marks:true` = Set-of-Mark image + `@ref` lines), `read_text`, `wait_for_text` |
+| Act | `tap` (by visible **text**, @ref or coordinates; `timeout` waits for the text; long/double press), `type_text` (by **field** hint/label, @ref or focus), `scroll`, `scroll_until` (`tap:true` opens the match), `swipe`, `drag` (waypoints with pauses for cross-page drags), `gesture` (composable `down`/`wait`/`move`/`up`, multi-finger), `pinch`, `press_key`, `set_clipboard` |
 | Apps | `list_apps`, `open_app`, `open_url`, `uninstall_app`, `open_settings` (30 Settings pages and quick panels), `start_intent` (any intent: dial, SMS, share, deep links) |
 | Notifications | `get_notifications`, `open_notification`, `notification_action` (incl. direct reply), `dismiss_notification` — needs notification access |
 | System | `media_control`, `set_volume`, `set_brightness`, `set_rotation` (need "Modify system settings"), `set_dnd`, `set_flashlight`, `wake_screen` |
 | Batch | `run_mobile_actions`: 1-20 steps in one call, stops on the first error |
 
-Every action returns a compact observation after the UI settles (or `observe:false`). A snapshot line looks like `@12  button ~"Network & internet · Mobile, Wi‑Fi, hotspot" [clk] (0,778 1080x231)`. Clickable rows without their own text get a `~"…"` label from their children. Refs are keyed by content identity (class, view id, text, occurrence) per package, so they survive scrolling, re-layout and app switches.
+Every action returns a compact observation after the UI settles (or `observe:false`). A snapshot line looks like `@4  button ~"Network & internet · Mobile, Wi‑Fi, hotspot" (540,472)`: roles imply clickability, rows carry their children's text and hide the duplicates, coordinates are centers. Refs are keyed by content identity (class, view id, text, occurrence) per package, so they survive scrolling, re-layout and app switches. Most flows need no snapshot at all: `tap text="Send"`, `type_text field="Message"`, `scroll_until text="…" tap=true`, chained in `run_mobile_actions`. See [OPTIMIZATIONS.md](OPTIMIZATIONS.md) for the reasoning and measurements.
 
 ## Quick install — published release
 
-Download **mobilemcp-0.2.2.apk**, **mobilemcp-0.2.2.tgz** and **SHA256SUMS** from [v0.2.2](https://github.com/Magi-Labs/mobilemcp/releases/tag/v0.2.2) into one directory.
+Download **mobilemcp-0.3.0.apk**, **mobilemcp-0.3.0.tgz** and **SHA256SUMS** from [v0.3.0](https://github.com/Magi-Labs/mobilemcp/releases/tag/v0.3.0) into one directory.
 
 ```sh
 shasum -a 256 -c SHA256SUMS          # Linux: sha256sum -c SHA256SUMS
-npm install --prefix ./mobilemcp-local ./mobilemcp-0.2.2.tgz
+npm install --prefix ./mobilemcp-local ./mobilemcp-0.3.0.tgz
 ./mobilemcp-local/node_modules/.bin/mobilemcp-hub
 ```
 
-Install the APK on the phone (`adb install mobilemcp-0.2.2.apk` or copy it over), then follow the app steps below and point your MCP client at `./mobilemcp-local/node_modules/mobilemcp/dist/index.js`.
+Install the APK on the phone (`adb install mobilemcp-0.3.0.apk` or copy it over), then follow the app steps below and point your MCP client at `./mobilemcp-local/node_modules/mobilemcp/dist/index.js`.
 
 ## Quick start — from source
 
@@ -67,7 +67,7 @@ cd app && ./gradlew :app:assembleDebug   # app/app/build/outputs/apk/debug/app-d
 
 Install the APK on the phone, then in the app:
 
-0. **Google Play Protect** blocks accessibility apps installed from chat apps or browsers in some countries (India, Singapore, Thailand, Brazil, …) with no override. Install over adb (`adb install mobilemcp-0.2.2.apk`) or pause *Play Store → Play Protect → Scan apps* while installing from the Files app, then re-enable it.
+0. **Google Play Protect** blocks accessibility apps installed from chat apps or browsers in some countries (India, Singapore, Thailand, Brazil, …) with no override. Install over adb (`adb install mobilemcp-0.3.0.apk`) or pause *Play Store → Play Protect → Scan apps* while installing from the Files app, then re-enable it.
 1. **Enable accessibility service** — Android 13+ first requires *App info → ⋮ → Allow restricted settings* for sideloaded apps (the app has an *App info* button).
 2. Enter the hub URL (`ws://<your-computer-ip>:17692` on the same Wi‑Fi, or your hosted `wss://` origin) and a device name, then **Connect**.
 3. Optionally **Allow background** so Doze does not throttle the connection; grant **Notification access** for the notification tools and DND, and **Modify system settings** for brightness/rotation.
@@ -115,9 +115,9 @@ The reverse proxy provides TLS; the hub never binds a public address without a t
 
 ## Agent workflow
 
-1. `get_screen_snapshot`, scoped or filtered, instead of dumping the whole screen.
-2. Act on an observed `@ref`. Read the `observation` in the result before deciding the next step.
-3. `wait_for_text` for loading, `run_mobile_actions` for known sequences, `take_screenshot` for visual content.
+1. If you know the label, act on it directly: `tap text=`, `type_text field=`, `scroll_until text= tap=true`; chain known steps in one `run_mobile_actions`.
+2. Otherwise `get_screen_snapshot` (scoped/filtered) and act on `@refs`. Read the `observation` every action returns instead of re-snapshotting.
+3. `wait_for_text` / `timeout` parameters for loading; `take_screenshot marks=true` for visual content.
 4. After `STALE_REF` or an app change, snapshot again. Never repeat a submission after a timeout without inspecting state.
 
 Screen content is untrusted data. The server instructions tell agents to enter credentials, OTPs or payments only when the task explicitly includes them.

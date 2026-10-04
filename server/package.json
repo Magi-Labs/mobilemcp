@@ -1,6 +1,6 @@
 {
   "name": "mobilemcp",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "MCP server that lets AI use your real Android phone - screen tree, taps, typing, apps - through its accessibility service.",
   "type": "module",
   "license": "MIT",

@@ -19,9 +19,9 @@ class Dispatcher(private val svc: MobileAccessibilityService) {
         return when (action) {
             "device.info" -> info()
             "screen.snapshot" -> snapshot(params)
-            "screen.screenshot" -> shots.capture(params.optInt("maxWidth", 800), params.optInt("quality", 70))
+            "screen.screenshot" -> screenshot(params)
             "screen.waitFor" -> obs.waitFor(params, deadline)
-            "interact.tap" -> observed(params) { inter.tap(params) }
+            "interact.tap" -> observed(params) { inter.tap(params, deadline) }
             "interact.type" -> observed(params) { inter.type(params) }
             "interact.swipe" -> observed(params) { inter.swipe(params) }
             "interact.drag" -> observed(params) { inter.drag(params) }
@@ -56,8 +56,16 @@ class Dispatcher(private val svc: MobileAccessibilityService) {
 
     private fun snapshot(params: JSONObject): JSONObject {
         val result = obs.snapshot(params)
-        if (params.optBoolean("screenshot", false)) result.put("screenshot", shots.capture().getString("screenshot"))
+        if (params.optBoolean("screenshot", false)) result.put("screenshot", shots.capture(marks = if (params.optBoolean("marks", false)) obs.lastMarks else emptyList()).getString("screenshot"))
         return result
+    }
+
+    /** Plain screenshot, or a Set-of-Mark one: interactive nodes outlined and labelled with their @refs, plus the matching lines. */
+    private fun screenshot(params: JSONObject): JSONObject {
+        if (!params.optBoolean("marks", false)) return shots.capture(params.optInt("maxWidth", 800), params.optInt("quality", 70))
+        val snap = obs.snapshot(JSONObject().put("interactiveOnly", true).put("maxNodes", params.optInt("maxNodes", 60)).put("maxChars", params.optInt("maxChars", 6000)))
+        val shot = shots.capture(params.optInt("maxWidth", 800), params.optInt("quality", 70), obs.lastMarks)
+        return shot.put("nodes", snap.getJSONArray("nodes")).put("version", snap.getString("version")).put("package", snap.opt("package")).put("total", snap.optInt("total"))
     }
 
     private fun observed(params: JSONObject, launch: Boolean = false, block: () -> JSONObject): JSONObject {

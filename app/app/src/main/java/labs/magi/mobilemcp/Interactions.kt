@@ -18,9 +18,19 @@ import java.util.concurrent.TimeUnit
 /** Taps, typing, scrolling, swipes and system keys. Prefers semantic node actions, falls back to real gestures. */
 class Interactions(private val svc: MobileAccessibilityService, private val obs: ScreenObserver) {
 
-    fun tap(p: JSONObject): JSONObject {
+    /** Resolves `text` (with optional wait) to a ref so text-targeted actions share the ref code path. */
+    private fun resolveTextTarget(p: JSONObject, deadline: Deadline): String {
+        val text = p.optString("text", ""); if (text.isEmpty()) return p.optString("ref", "")
+        val end = minOf(System.currentTimeMillis() + p.optLong("timeout", 0).coerceIn(0, 60_000), deadline.at - 500)
+        while (true) {
+            try { return obs.refFor(obs.findByText(text)).substringBefore(' ') } catch (e: ActionError) { if (System.currentTimeMillis() >= end || !e.message!!.startsWith("TEXT_NOT_FOUND")) throw e }
+            Thread.sleep(250)
+        }
+    }
+
+    fun tap(p: JSONObject, deadline: Deadline = Deadline.from(p)): JSONObject {
         val long = p.optBoolean("longPress", false)
-        val ref = p.optString("ref", "")
+        val ref = resolveTextTarget(p, deadline)
         if (p.optBoolean("doubleTap", false)) {
             val (x, y) = if (ref.isNotEmpty()) point(p, "ref", "x", "y") else point(p, "", "x", "y")
             if (!doubleTapGesture(x, y)) fail("TAP_FAILED", "Double tap was cancelled")
@@ -47,11 +57,21 @@ class Interactions(private val svc: MobileAccessibilityService, private val obs:
 
     fun type(p: JSONObject): JSONObject {
         val text = p.optString("text", ""); val clear = p.optBoolean("clear", false); val submit = p.optBoolean("submit", false)
-        val ref = p.optString("ref", "")
-        var node = if (ref.isNotEmpty()) obs.resolve(ref).node else focusedEditable() ?: fail("NO_INPUT", "No focused editable field; tap a field first or pass ref.")
+        val ref = p.optString("ref", ""); val field = p.optString("field", "")
+        // Fields often appear a moment after the tap that opened them: wait up to `timeout` (default 3s) for field/focus lookups.
+        val end = System.currentTimeMillis() + p.optLong("timeout", 3000).coerceIn(0, 60_000)
+        var node: AccessibilityNodeInfo
+        while (true) {
+            val found = try { if (ref.isNotEmpty()) obs.resolve(ref).node else if (field.isNotEmpty()) findField(field) else focusedEditable() } catch (e: ActionError) { if (System.currentTimeMillis() >= end || e.message!!.startsWith("AMBIGUOUS")) throw e; null }
+            if (found != null) { node = found; break }
+            if (System.currentTimeMillis() >= end) fail(if (field.isNotEmpty()) "FIELD_NOT_FOUND" else "NO_INPUT", if (field.isNotEmpty()) "No editable field matching '$field'." else "No focused editable field; tap a field first or pass ref/field.")
+            Thread.sleep(200)
+        }
         if (!node.isEditable) node = findEditable(node, 0) ?: fail("NOT_EDITABLE", "Target is not an editable field.")
         if (!node.isFocused) { node.performAction(AccessibilityNodeInfo.ACTION_FOCUS); node.refresh() }
-        val existing = if (clear || node.isShowingHintText) "" else (node.text?.toString() ?: "")
+        // Some fields (WhatsApp's composer) report the hint as text without isShowingHintText; never append onto a hint.
+        val current = node.text?.toString() ?: ""
+        val existing = if (clear || node.isShowingHintText || (current.isNotEmpty() && current == node.hintText?.toString())) "" else current
         val args = Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, existing + text) }
         var method = "setText"
         if (!node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) {
@@ -229,6 +249,13 @@ class Interactions(private val svc: MobileAccessibilityService, private val obs:
 
     // ---- helpers ----------------------------------------------------------------------------------------------
 
+    /** Editable whose hint, description, id or current text contains `field` (case-insensitive); unique match required. */
+    private fun findField(field: String): AccessibilityNodeInfo {
+        val q = field.lowercase()
+        val hits = obs.collect().filter { it.node.isEditable && (it.text.lowercase().contains(q) || (it.node.hintText?.toString()?.lowercase()?.contains(q) == true)) }
+        return when (hits.size) { 1 -> hits[0].node; 0 -> fail("FIELD_NOT_FOUND", "No editable field matching '$field'."); else -> fail("AMBIGUOUS_FIELD", "'$field' matches ${hits.size} fields: ${hits.joinToString(" | ") { obs.refFor(it) }}") }
+    }
+
     fun focusedEditable(): AccessibilityNodeInfo? {
         svc.rootInActiveWindow?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)?.takeIf { it.isEditable }?.let { return it }
         return obs.collect().firstOrNull { it.node.isEditable && it.node.isFocused }?.node ?: obs.collect().firstOrNull { it.node.isEditable }?.node
@@ -296,12 +323,19 @@ class Interactions(private val svc: MobileAccessibilityService, private val obs:
         val step = JSONObject().put("direction", p.optString("direction", "down")).put("amount", 1); p.optString("ref", "").takeIf { it.isNotEmpty() }?.let { step.put("ref", it) }
         var pages = 0
         while (true) {
-            obs.collect().firstOrNull { it.text.lowercase().contains(text) }?.let { return JSONObject().put("found", true).put("pages", pages).put("match", obs.refFor(it)) }
+            obs.collect().firstOrNull { it.text.lowercase().contains(text) }?.let { return found(p, it, pages) }
             if (pages >= maxPages || System.currentTimeMillis() > end) return JSONObject().put("found", false).put("pages", pages).put("error", "NOT_FOUND: '$text' not seen after $pages pages")
             val r = scroll(step); pages++
-            if (r.optBoolean("atEnd", false)) { obs.settle(); obs.collect().firstOrNull { it.text.lowercase().contains(text) }?.let { return JSONObject().put("found", true).put("pages", pages).put("match", obs.refFor(it)) }; return JSONObject().put("found", false).put("pages", pages).put("error", "NOT_FOUND: reached the end after $pages pages") }
+            if (r.optBoolean("atEnd", false)) { obs.settle(); obs.collect().firstOrNull { it.text.lowercase().contains(text) }?.let { return found(p, it, pages) }; return JSONObject().put("found", false).put("pages", pages).put("error", "NOT_FOUND: reached the end after $pages pages") }
             obs.settle()
         }
+    }
+
+    private fun found(p: JSONObject, rec: ScreenObserver.Rec, pages: Int): JSONObject {
+        val line = obs.refFor(rec)
+        val r = JSONObject().put("found", true).put("pages", pages).put("match", line)
+        if (p.optBoolean("tap", false)) { obs.settle(); r.put("tapped", tap(JSONObject().put("ref", line.substringBefore(' ')))) }
+        return r
     }
 
     private fun gestureTap(x: Int, y: Int, long: Boolean): Boolean {

@@ -8,11 +8,12 @@ description: Operate the user's Android phone through the mobilemcp MCP tools (g
 The phone is a real device the user holds; act like a careful person using it, not a script.
 
 ## Loop
-1. `get_screen_snapshot` — one line per node: `@ref role "text" (desc) #id [states] (x,y wxh)`. Narrow with `query`, `scope`, `interactiveOnly`; page with `offset`. Pass `since:<version>` to get only changes.
-2. Act on an observed `@ref`: `tap`, `type_text`, `scroll` (content inside a list), `swipe` (raw finger gesture), `press_key` (back/home/recents/notifications/enter).
+0. Know the label? Act directly: `tap text="Send"`, `type_text field="Message"`, `scroll_until text="…" tap=true`, `tap text="…" timeout=5000` (wait-then-tap). Chain a known flow in one `run_mobile_actions`.
+1. Otherwise `get_screen_snapshot` — one line per node: `@ref role "text" (desc) [flags] (cx,cy)`; rows show `~"title · subtitle"`. Narrow with `query`, `scope`, `interactiveOnly`; page with `offset`; `since:<version>` for changes only.
+2. Act on an observed `@ref`: `tap`, `type_text`, `scroll`, `swipe`, `drag`, `gesture`, `press_key`.
 3. Read the compact `observation` every action returns. Decide from it; do not re-snapshot unless it was truncated or scoped wrong.
-4. For loading states use `wait_for_text` (or `package`) instead of repeated snapshots.
-5. Known sequences go in one `run_mobile_actions` call (stops on first error, reports completed steps).
+4. Loading states: `wait_for_text` or the `timeout` parameters, never repeated snapshots.
+5. Visual content: `take_screenshot marks=true` returns an image labelled with `@refs` plus the lines; act by ref.
 
 ## Tips
 - `open_app` with a label ("WhatsApp") or package; it waits for the app to be in front. `open_url` handles links and deep links.
