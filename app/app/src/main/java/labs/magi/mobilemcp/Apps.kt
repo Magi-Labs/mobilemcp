@@ -42,9 +42,11 @@ class Apps(private val svc: MobileAccessibilityService, private val obs: ScreenO
 
     fun openUrl(url: String): JSONObject {
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url.trim())).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val handler = svc.packageManager.resolveActivity(intent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo?.packageName
         try { svc.startActivity(intent) } catch (_: ActivityNotFoundException) { fail("NO_HANDLER", "No app handles $url") }
-        obs.settle(since = System.currentTimeMillis() - 50, reactMs = 3000, maxMs = 4000)
-        return JSONObject().put("ok", true).put("url", url).put("package", obs.currentPackage())
+        // Chooser dialogs resolve to android; otherwise wait for the handler (browser cold starts take seconds).
+        val foreground = if (handler != null && handler != "android") awaitForeground(handler, 6000) else { obs.settle(since = System.currentTimeMillis() - 50, reactMs = 3000, maxMs = 4000); true }
+        return JSONObject().put("ok", true).put("url", url).put("handler", handler).put("foreground", foreground).put("package", obs.currentPackage())
     }
 
     private fun awaitForeground(pkg: String, timeoutMs: Long): Boolean {

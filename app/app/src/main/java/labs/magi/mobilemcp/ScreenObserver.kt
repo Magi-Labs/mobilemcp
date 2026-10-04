@@ -236,7 +236,7 @@ class ScreenObserver(private val svc: MobileAccessibilityService) {
             }
             if (pkgOk && textOk) {
                 val r = JSONObject().put("found", true).put("elapsedMs", System.currentTimeMillis() - started).put("package", currentPackage())
-                match?.let { r.put("match", "@${refByKey[it.key] ?: "?"} ${it.line}") }
+                match?.let { val ref = refByKey.getOrPut(it.key) { state.nextRef++ }; keyByRef[ref] = it.key; r.put("match", "@$ref ${it.line}") }
                 return r
             }
             if (System.currentTimeMillis() >= end) return JSONObject().put("found", false).put("elapsedMs", System.currentTimeMillis() - started).put("package", currentPackage()).put("error", "WAIT_TIMEOUT: condition not met within ${timeout}ms")
