@@ -11,3 +11,7 @@ services:
     environment:
       MOBILEMCP_PUBLIC_URL: ${MOBILEMCP_PUBLIC_URL}
       MOBILEMCP_TOKEN: ${MOBILEMCP_TOKEN}
+      MOBILEMCP_APK: /app/mobilemcp.apk
+    volumes:
+      # Optional: serve the app at GET /app.apk?token=<device token> so phones can self-update.
+      - ./mobilemcp.apk:/app/mobilemcp.apk:ro

@@ -1,6 +1,6 @@
 import { createServer as createNetServer } from 'node:net';
 import { createServer, type IncomingMessage } from 'node:http';
-import { chmodSync, unlinkSync } from 'node:fs';
+import { chmodSync, unlinkSync, existsSync, statSync, createReadStream } from 'node:fs';
 import { randomUUID, createHash, timingSafeEqual } from 'node:crypto';
 import { WebSocketServer } from 'ws';
 import { DEFAULT_WS_PORT } from '@mobilemcp/shared';
@@ -60,6 +60,14 @@ const httpServer = createServer(async (req, res) => {
   const respond = (code: number, message: string) => { res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify({ error: message })); };
   if (!requestAllowed(req)) { respond(403, 'Host or Origin not allowed'); return; }
   if (req.url === '/healthz' && req.method === 'GET') { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ status: 'ok', devices: authenticated ? undefined : local.router.list().length })); return; }
+  if (req.url?.split('?')[0] === '/app.apk' && req.method === 'GET') {
+    // Self-update path: phones download the app from their own hub. Device token required on authenticated hubs.
+    const apk = process.env.MOBILEMCP_APK;
+    if (!apk || !existsSync(apk)) { respond(404, 'No APK configured (MOBILEMCP_APK)'); return; }
+    if (!authenticate(new URL(req.url, 'http://localhost').searchParams.get('token') ?? undefined, 'deviceToken')) { respond(401, 'Valid device token required (?token=)'); return; }
+    res.writeHead(200, { 'Content-Type': 'application/vnd.android.package-archive', 'Content-Disposition': 'attachment; filename="mobilemcp.apk"', 'Content-Length': statSync(apk).size, 'Cache-Control': 'no-store' });
+    createReadStream(apk).pipe(res); return;
+  }
   if (req.url !== '/mcp') { respond(404, 'Not found'); return; }
   const authorization = req.headers.authorization;
   const account = authenticate(authorization?.startsWith('Bearer ') ? authorization.slice(7) : undefined, 'agentToken');

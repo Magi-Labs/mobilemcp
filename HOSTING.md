@@ -49,4 +49,6 @@ Caddy: `mobilemcp.example.com { reverse_proxy 10.10.0.2:17692 }`.
 - Agent over HTTP: `{"type":"http","url":"https://mobilemcp.example.com/mcp","headers":{"Authorization":"Bearer <token>"}}`.
 - Agent over stdio with a local hub stays unchanged; a stdio process cannot reach a remote hub (it uses the IPC socket).
 
+Put the release APK next to `compose.yaml` as `mobilemcp.apk` and the hub serves it at `GET /app.apk?token=<device token>` (`MOBILEMCP_APK`), so a phone can download its own update from the hub.
+
 `GET /healthz` is unauthenticated and reports the local device count only for unauthenticated hubs.
