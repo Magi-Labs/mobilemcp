@@ -29,13 +29,19 @@ class MainActivity : AppCompatActivity() {
         hubUrl = findViewById(R.id.hubUrl); deviceName = findViewById(R.id.deviceName); token = findViewById(R.id.token)
         autoConnect = findViewById(R.id.autoConnect); connect = findViewById(R.id.connect)
 
-        hubUrl.setText(Prefs.hubUrl(this)); deviceName.setText(Prefs.name(this)); token.setText(Prefs.token(this)); autoConnect.isChecked = Prefs.autoConnect(this)
+        hubUrl.setText(Prefs.hubUrl(this).ifEmpty { BuildConfig.DEFAULT_HUB_URL }); deviceName.setText(Prefs.name(this)); token.setText(Prefs.token(this)); autoConnect.isChecked = Prefs.autoConnect(this)
+        findViewById<Button>(R.id.appInfo).setOnClickListener {
+            startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
+        }
 
         findViewById<Button>(R.id.enableService).setOnClickListener {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         }
         connect.setOnClickListener {
             save()
+            val t = token.text.toString().trim()
+            if (t.isNotEmpty() && t.length < 32) { Toast.makeText(this, "Token looks incomplete (${t.length} chars; hub tokens are 32+). Paste it again.", Toast.LENGTH_LONG).show(); return@setOnClickListener }
+            if (hubUrl.text.toString().contains(t) || (t.isNotEmpty() && deviceName.text.toString().contains(t))) { Toast.makeText(this, "The token is pasted into the wrong field.", Toast.LENGTH_LONG).show(); return@setOnClickListener }
             val svc = MobileAccessibilityService.instance
             if (svc == null) { Toast.makeText(this, "Enable the MobileMCP accessibility service first", Toast.LENGTH_LONG).show(); return@setOnClickListener }
             if (svc.hub.enabled) svc.hub.disconnect() else svc.hub.connect()

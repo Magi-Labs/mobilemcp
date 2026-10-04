@@ -7,6 +7,9 @@
         <TextView android:id="@+id/status" android:layout_width="match_parent" android:layout_height="wrap_content"
             android:textSize="16sp" android:textStyle="bold" android:text="Service off" />
 
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:textSize="13sp"
+            android:text="Setup: ① Install (Play Protect blocks accessibility apps shared via chat/browser in some countries: install over adb, or pause Play Protect scanning). ② Android 13+: App info → ⋮ → Allow restricted settings. ③ Enable the accessibility service. ④ Enter hub URL + token, Connect. ⑤ Allow background so the connection survives Doze." />
+
         <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="Hub URL" />
         <EditText android:id="@+id/hubUrl" android:layout_width="match_parent" android:layout_height="wrap_content"
             android:hint="wss://mobile.example.com or ws://10.0.2.2:17692" android:inputType="textUri" android:importantForAutofill="no" />
@@ -22,8 +25,10 @@
         <CheckBox android:id="@+id/autoConnect" android:layout_width="match_parent" android:layout_height="wrap_content"
             android:layout_marginTop="8dp" android:text="Connect automatically when the service starts" />
 
+        <Button android:id="@+id/appInfo" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="16dp" android:text="App info (allow restricted settings)" />
         <Button android:id="@+id/enableService" android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:layout_marginTop="16dp" android:text="1. Enable accessibility service" />
+            android:text="1. Enable accessibility service" />
         <Button android:id="@+id/connect" android:layout_width="match_parent" android:layout_height="wrap_content"
             android:text="2. Connect" />
         <Button android:id="@+id/battery" android:layout_width="match_parent" android:layout_height="wrap_content"

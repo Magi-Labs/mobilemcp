@@ -44,6 +44,17 @@ export function registerInteractTools(mcp: McpServer, bridge: Bridge): void {
       ...actionObservationSchema,
     },
   }, async args => bridgeCall(bridge, 'interact.swipe', args));
+  mcp.registerTool('drag', {
+    description: 'Long-press then drag: hold on the source (@ref or x,y) for holdMs, move to the target (@ref or x,y) over moveMs, release. Use for rearranging icons, creating launcher folders, sliders, drag-and-drop. The target of a launcher drop is the icon to merge with or an empty cell.',
+    inputSchema: {
+      fromRef: refSchema.optional(), fromX: z.number().int().optional(), fromY: z.number().int().optional(),
+      toRef: refSchema.optional(), toX: z.number().int().optional(), toY: z.number().int().optional(),
+      holdMs: z.number().int().min(100).max(5000).optional().describe('Long-press duration before moving, default 700.'),
+      moveMs: z.number().int().min(100).max(5000).optional().describe('Movement duration, default 600.'),
+      hoverMs: z.number().int().min(0).max(5000).optional().describe('Pause over the target before releasing (launchers need ~400ms to open a folder/merge), default 500.'),
+      ...actionObservationSchema,
+    },
+  }, async args => bridgeCall(bridge, 'interact.drag', args));
   mcp.registerTool('press_key', {
     description: 'System keys: back, home, recents, notifications, quick_settings, power (dialog), lock, dismiss_notifications, enter (keyboard action on the focused field).',
     inputSchema: { key: z.enum(KEYS), ...actionObservationSchema },

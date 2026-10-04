@@ -71,7 +71,6 @@ class HubConnection(private val ctx: Context, private val dispatcher: Dispatcher
 
     private val listener = object : WebSocketListener() {
         override fun onOpen(webSocket: WebSocket, response: Response) {
-            attempt = 0
             val hello = JSONObject()
                 .put("type", "hello")
                 .put("deviceId", Prefs.deviceId(ctx))
@@ -84,7 +83,7 @@ class HubConnection(private val ctx: Context, private val dispatcher: Dispatcher
         override fun onMessage(webSocket: WebSocket, text: String) {
             val msg = try { JSONObject(text) } catch (_: Exception) { return }
             when (msg.optString("type")) {
-                "hello_ack" -> { connected = true; Status.set("Connected as ${Prefs.displayName(ctx)}"); return }
+                "hello_ack" -> { attempt = 0; connected = true; Status.set("Connected as ${Prefs.displayName(ctx)}"); return }
                 "pong" -> return
             }
             val id = msg.optString("id", ""); val action = msg.optString("action", "")
@@ -104,7 +103,12 @@ class HubConnection(private val ctx: Context, private val dispatcher: Dispatcher
         }
 
         override fun onClosing(webSocket: WebSocket, code: Int, reason: String) { webSocket.close(code, null) }
-        override fun onClosed(webSocket: WebSocket, code: Int, reason: String) { if (ws === webSocket) scheduleReconnect("Closed ($code ${reason.ifEmpty { "no reason" }})") }
+        override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+            if (ws !== webSocket) return
+            // 1008 = the hub rejected our hello (bad token); retrying cannot fix that.
+            if (code == 1008) { enabled = false; connected = false; Status.set("Rejected by hub: $reason. Check the device token, then Connect again."); return }
+            scheduleReconnect("Closed ($code ${reason.ifEmpty { "no reason" }})")
+        }
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) { if (ws === webSocket) scheduleReconnect("Connection failed: ${t.message ?: t.javaClass.simpleName}") }
     }
 }

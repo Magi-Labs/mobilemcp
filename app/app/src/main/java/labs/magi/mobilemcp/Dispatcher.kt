@@ -23,6 +23,7 @@ class Dispatcher(private val svc: MobileAccessibilityService) {
             "interact.tap" -> observed(params) { inter.tap(params) }
             "interact.type" -> observed(params) { inter.type(params) }
             "interact.swipe" -> observed(params) { inter.swipe(params) }
+            "interact.drag" -> observed(params) { inter.drag(params) }
             "interact.scroll" -> observed(params) { inter.scroll(params) }
             "interact.key" -> observed(params) { inter.key(params) }
             "interact.setClipboard" -> inter.setClipboard(params.optString("text", ""))
@@ -80,6 +81,7 @@ class Dispatcher(private val svc: MobileAccessibilityService) {
                     "type" -> inter.type(step)
                     "scroll" -> inter.scroll(step)
                     "swipe" -> inter.swipe(step)
+                    "drag" -> inter.drag(step)
                     "key" -> inter.key(step)
                     "openApp" -> apps.open(step.optString("app", ""))
                     "openUrl" -> apps.openUrl(step.optString("url", ""))

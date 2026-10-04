@@ -9,6 +9,7 @@ export const BRIDGE_ACTIONS = [
   'interact.tap',
   'interact.type',
   'interact.swipe',
+  'interact.drag',
   'interact.scroll',
   'interact.key',
   'interact.setClipboard',

@@ -95,6 +95,35 @@ class Interactions(private val svc: MobileAccessibilityService, private val obs:
         return JSONObject().put("ok", true).put("from", from).put("to", to)
     }
 
+    /** Long-press, drag, hover, release as one continuous touch (three chained strokes). */
+    fun drag(p: JSONObject): JSONObject {
+        val from = point(p, "fromRef", "fromX", "fromY"); val to = point(p, "toRef", "toX", "toY")
+        val hold = p.optInt("holdMs", 700).coerceIn(100, 5000).toLong()
+        val move = p.optInt("moveMs", 600).coerceIn(100, 5000).toLong()
+        val hover = p.optInt("hoverMs", 500).coerceIn(0, 5000).toLong()
+        val (fx, fy) = from; val (tx, ty) = to
+        val press = Path().apply { moveTo(fx.toFloat(), fy.toFloat()) }
+        val s1 = GestureDescription.StrokeDescription(press, 0, hold, true)
+        if (!dispatch(GestureDescription.Builder().addStroke(s1).build())) fail("DRAG_FAILED", "Long press was cancelled")
+        val line = Path().apply { moveTo(fx.toFloat(), fy.toFloat()); lineTo(tx.toFloat(), ty.toFloat()) }
+        val s2 = s1.continueStroke(line, 0, move, hover > 0)
+        if (!dispatch(GestureDescription.Builder().addStroke(s2).build())) fail("DRAG_FAILED", "Drag movement was cancelled")
+        if (hover > 0) {
+            val stay = Path().apply { moveTo(tx.toFloat(), ty.toFloat()) }
+            val s3 = s2.continueStroke(stay, 0, hover, false)
+            if (!dispatch(GestureDescription.Builder().addStroke(s3).build())) fail("DRAG_FAILED", "Release was cancelled")
+        }
+        return JSONObject().put("ok", true).put("from", "$fx,$fy").put("to", "$tx,$ty")
+    }
+
+    /** Resolves a ref to its center or takes explicit coordinates. */
+    private fun point(p: JSONObject, refKey: String, xKey: String, yKey: String): Pair<Int, Int> {
+        val ref = p.optString(refKey, "")
+        if (ref.isNotEmpty()) { val r = Rect(); obs.resolve(ref).node.getBoundsInScreen(r); return r.centerX() to r.centerY() }
+        if (!p.has(xKey) || !p.has(yKey)) fail("BAD_ARGS", "Pass $refKey or both $xKey and $yKey.")
+        return p.getInt(xKey) to p.getInt(yKey)
+    }
+
     fun key(p: JSONObject): JSONObject {
         val key = p.optString("key", "")
         val ok = when (key) {
