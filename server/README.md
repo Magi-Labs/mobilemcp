@@ -2,11 +2,15 @@
 
 <p align="center">Let AI agents use your real Android phone the way you do: read the screen, tap, type, scroll, open apps.</p>
 
-MobileMCP is the mobile sibling of [LiveMCP](https://github.com/Magi-Labs/livemcp). An Android **accessibility service** (the app) dials out to a **hub** (the server) over WebSocket; agents talk to the hub through MCP. No USB, no ADB, no rooting: the phone can be anywhere with network access to the hub, and it keeps working after reboots.
+Companion: [LiveMCP](https://github.com/Magi-Labs/livemcp) does the same for Chrome; MobileMCP is its mobile sibling and shares the hub/bridge design.
+
+MobileMCP is for people who want an agent (Claude Code, Cursor, any MCP client) to operate their own phone from anywhere: an Android **accessibility service** (the app) dials out to a **hub** (the server) over WebSocket; agents talk to the hub through MCP. No USB, no ADB, no rooting. The hub also serves a **dashboard** with connected devices, a live activity feed and a per-device live view.
+
+**Status:** active, early (server 0.4.0, app 0.3.0). Verified on a Pixel 7 emulator (API 35) and a OnePlus phone (Android 15). No Play Store listing; the app is sideloaded. No automated test suite; verification is scripted against real devices.
 
 ```
 agent (Claude Code, Codex, …) ──stdio──▶ mobilemcp ──IPC──▶ mobilemcp-hub ◀──WebSocket── MobileMCP app (phone)
-                               ──HTTP /mcp (hosted)──▶
+                               ──HTTP /mcp (hosted)──▶      ──HTTP / ──▶ dashboard
 ```
 
 ## Why accessibility instead of ADB
@@ -37,7 +41,9 @@ The accessibility route is what "use my phone like a normal user" means. ADB-lev
 
 Every action returns a compact observation after the UI settles (or `observe:false`). A snapshot line looks like `@4  button ~"Network & internet · Mobile, Wi‑Fi, hotspot" (540,472)`: roles imply clickability, rows carry their children's text and hide the duplicates, coordinates are centers. Refs are keyed by content identity (class, view id, text, occurrence) per package, so they survive scrolling, re-layout and app switches. Most flows need no snapshot at all: `tap text="Send"`, `type_text field="Message"`, `scroll_until text="…" tap=true`, chained in `run_mobile_actions`. See [OPTIMIZATIONS.md](OPTIMIZATIONS.md) for the reasoning and measurements.
 
-## Quick install — published release
+## Quick start
+
+### Published release
 
 Download **mobilemcp-0.3.0.apk**, **mobilemcp-0.3.0.tgz** and **SHA256SUMS** from [v0.3.0](https://github.com/Magi-Labs/mobilemcp/releases/tag/v0.3.0) into one directory.
 
@@ -49,7 +55,7 @@ npm install --prefix ./mobilemcp-local ./mobilemcp-0.3.0.tgz
 
 Install the APK on the phone (`adb install mobilemcp-0.3.0.apk` or copy it over), then follow the app steps below and point your MCP client at `./mobilemcp-local/node_modules/mobilemcp/dist/index.js`.
 
-## Quick start — from source
+### From source
 
 Requires Node.js 18+ and Android 11+ on the phone.
 
@@ -99,6 +105,10 @@ adb shell am start -n labs.magi.mobilemcp/.MainActivity --es hubUrl ws://10.0.2.
 
 Debug builds accept settings through intent extras; release builds ignore them so no other app can repoint the hub.
 
+## How it works
+
+The app's `AccessibilityService` owns the hub connection, reads the window tree, performs node actions and injected gestures and takes screenshots. The hub routes requests per account, serves MCP over HTTP, local sessions over IPC, and the dashboard. `shared/src/protocol.ts` is the single contract. Details, trust boundaries and failure modes: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md); decisions in [docs/decisions](docs/decisions).
+
 ## Hosted hub
 
 The hub also serves authenticated MCP over HTTP at `/mcp` and the phone endpoint at `/device` on one port, so the phone and remote agents can both reach it through a reverse proxy:
@@ -111,7 +121,7 @@ MOBILEMCP_HOST=0.0.0.0 MOBILEMCP_PUBLIC_URL=https://mobile.example.com MOBILEMCP
 - Agent: `{"type":"http","url":"https://mobile.example.com/mcp","headers":{"Authorization":"Bearer <token>"}}`, or stdio with `MOBILEMCP_TOKEN` set.
 - `MOBILEMCP_ACCOUNTS='[{"id":"me","agentToken":"…","deviceToken":"…"}]'` isolates several users; devices and selections never cross accounts.
 
-The reverse proxy provides TLS; the hub never binds a public address without a token.
+The reverse proxy provides TLS; the hub never binds a public address without a token. The dashboard at `/` shows devices, a live activity feed (names and timings only) and a per-device live view with click-to-tap; see [HOSTING.md](HOSTING.md).
 
 ## Agent workflow
 
@@ -122,7 +132,10 @@ The reverse proxy provides TLS; the hub never binds a public address without a t
 
 Screen content is untrusted data. The server instructions tell agents to enter credentials, OTPs or payments only when the task explicitly includes them.
 
-## Limits
+## Limitations and data handling
+
+The hub forwards requests and responses without storing them; activity events hold device names, action names, durations and error codes. The app persists only its settings. Password fields are masked in snapshots. Screen content reaches whatever MCP client you connect, so connect clients you trust.
+
 
 - Android 11+ (API 30) for accessibility screenshots and `ACTION_IME_ENTER`.
 - Apps with `FLAG_SECURE` (banking, DRM video) expose neither nodes nor pixels.
@@ -134,9 +147,20 @@ Screen content is untrusted data. The server instructions tell agents to enter c
 
 ## Development
 
+Contributor setup and change workflow: [CONTRIBUTING.md](CONTRIBUTING.md). Agent/maintainer instructions: [AGENTS.md](AGENTS.md).
+
 ```sh
 npm run typecheck && npm run build
 STEPS='[["get_device_info"],["get_screen_snapshot",{"maxNodes":20}]]' node server/test/e2e.mjs   # against a connected phone/emulator
 ```
 
-MIT © Deepak Silaych
+## Documentation
+
+- [HOSTING.md](HOSTING.md) — Docker, reverse proxy, tokens, dashboard, self-update
+- [OPTIMIZATIONS.md](OPTIMIZATIONS.md) — observation format, literature, measurements
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/decisions](docs/decisions), [docs/THIRD_PARTY.md](docs/THIRD_PARTY.md)
+- [CHANGELOG.md](CHANGELOG.md), [SECURITY.md](SECURITY.md)
+
+## License
+
+MIT © Deepak Silaych. Third-party notices in [docs/THIRD_PARTY.md](docs/THIRD_PARTY.md).

@@ -6,7 +6,9 @@ import { WebSocketServer } from 'ws';
 import { DEFAULT_WS_PORT } from '@mobilemcp/shared';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
-import { DeviceRouter, validHello } from './router.js';
+import { DeviceRouter, validHello, type HubEvent } from './router.js';
+import dashboardHtml from '../dashboard/index.html';
+import picoCss from '../dashboard/vendor/pico.min.css';
 import { createMcpServer } from './mcp-server.js';
 import type { Bridge } from './bridge.js';
 
@@ -17,9 +19,10 @@ const loopback = ['127.0.0.1', 'localhost', '::1'].includes(host);
 const publicUrl = process.env.MOBILEMCP_PUBLIC_URL ? new URL(process.env.MOBILEMCP_PUBLIC_URL) : undefined;
 if (publicUrl && (publicUrl.protocol !== 'https:' || publicUrl.pathname !== '/' || publicUrl.search || publicUrl.hash || publicUrl.username || publicUrl.password)) throw new Error('MOBILEMCP_PUBLIC_URL must be an HTTPS origin, e.g. https://mobile.example.com');
 
-type Account = { id: string; agentToken: string; deviceToken: string; router: DeviceRouter };
+type Account = { id: string; agentToken: string; deviceToken: string; router: DeviceRouter; events: HubEvent[]; listeners: Set<(e: HubEvent) => void>; dashboard?: Bridge };
+const HUB_VERSION = '0.4.0'; const startedAt = Date.now();
 const config = process.env.MOBILEMCP_ACCOUNTS;
-const accounts: Account[] = config ? JSON.parse(config) : process.env.MOBILEMCP_TOKEN ? [{ id: 'default', agentToken: process.env.MOBILEMCP_TOKEN, deviceToken: process.env.MOBILEMCP_TOKEN }] : [];
+const accounts: Account[] = (config ? JSON.parse(config) : process.env.MOBILEMCP_TOKEN ? [{ id: 'default', agentToken: process.env.MOBILEMCP_TOKEN, deviceToken: process.env.MOBILEMCP_TOKEN }] : []).map((a: any) => ({ ...a, events: [], listeners: new Set() }));
 if (!Array.isArray(accounts)) throw new Error('MOBILEMCP_ACCOUNTS must be a JSON array');
 const authenticated = accounts.length > 0;
 if ((!loopback || publicUrl) && !authenticated) throw new Error('Hosted/network access requires MOBILEMCP_TOKEN or MOBILEMCP_ACCOUNTS');
@@ -32,9 +35,11 @@ for (const a of accounts) {
     if (tokens.has(token) && tokens.get(token) !== a.id) throw new Error('Tokens cannot be shared between accounts');
     tokens.set(token, a.id);
   }
-  a.router = new DeviceRouter();
+  a.router = new DeviceRouter(); wireEvents(a);
 }
-const local: Account = { id: 'local', agentToken: '', deviceToken: '', router: new DeviceRouter() };
+const local: Account = { id: 'local', agentToken: '', deviceToken: '', router: new DeviceRouter(), events: [], listeners: new Set() };
+wireEvents(local);
+function wireEvents(a: Account) { a.router.onEvent = e => { a.events.push(e); if (a.events.length > 300) a.events.splice(0, a.events.length - 300); for (const l of a.listeners) l(e); }; }
 const hash = (s: string) => createHash('sha256').update(s).digest();
 function authenticate(value: unknown, role: 'agentToken' | 'deviceToken'): Account | undefined {
   if (!authenticated) return local;
@@ -60,15 +65,52 @@ const httpServer = createServer(async (req, res) => {
   const respond = (code: number, message: string) => { res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify({ error: message })); };
   if (!requestAllowed(req)) { respond(403, 'Host or Origin not allowed'); return; }
   if (req.url === '/healthz' && req.method === 'GET') { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ status: 'ok', devices: authenticated ? undefined : local.router.list().length })); return; }
-  if (req.url?.split('?')[0] === '/app.apk' && req.method === 'GET') {
+  if (new URL(req.url ?? '/', 'http://localhost').pathname === '/app.apk' && req.method === 'GET') {
     // Self-update path: phones download the app from their own hub. Device token required on authenticated hubs.
     const apk = process.env.MOBILEMCP_APK;
     if (!apk || !existsSync(apk)) { respond(404, 'No APK configured (MOBILEMCP_APK)'); return; }
-    if (!authenticate(new URL(req.url, 'http://localhost').searchParams.get('token') ?? undefined, 'deviceToken')) { respond(401, 'Valid device token required (?token=)'); return; }
+    if (!authenticate(new URL(req.url ?? '/', 'http://localhost').searchParams.get('token') ?? undefined, 'deviceToken')) { respond(401, 'Valid device token required (?token=)'); return; }
     res.writeHead(200, { 'Content-Type': 'application/vnd.android.package-archive', 'Content-Disposition': 'attachment; filename="mobilemcp.apk"', 'Content-Length': statSync(apk).size, 'Cache-Control': 'no-store' });
     createReadStream(apk).pipe(res); return;
   }
-  if (req.url !== '/mcp') { respond(404, 'Not found'); return; }
+  const url = new URL(req.url ?? '/', 'http://localhost');
+  if ((url.pathname === '/' || url.pathname === '/dashboard') && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Security-Policy': "default-src 'self'; img-src 'self' data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'" });
+    res.end(dashboardHtml.replace('/*PICO*/', picoCss).replace('{{AUTH}}', authenticated ? 'token' : 'none').replace('{{VERSION}}', HUB_VERSION)); return;
+  }
+  if (url.pathname.startsWith('/api/')) {
+    // Dashboard API: agent token as Bearer, or ?token= for EventSource which cannot set headers.
+    const header = req.headers.authorization; const token = header?.startsWith('Bearer ') ? header.slice(7) : url.searchParams.get('token') ?? undefined;
+    const account = authenticate(token, 'agentToken');
+    if (!account) { respond(401, 'Valid agent token required'); return; }
+    if (url.pathname === '/api/status' && req.method === 'GET') {
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      res.end(JSON.stringify({ hub: { version: HUB_VERSION, authenticated, uptimeMs: Date.now() - startedAt, account: account.id }, devices: account.router.list(), sessions: account.router.sessionCount(), events: account.events.slice(-100) })); return;
+    }
+    if (url.pathname === '/api/events' && req.method === 'GET') {
+      res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive' });
+      res.write(': connected\n\n');
+      const listener = (e: HubEvent) => res.write(`data: ${JSON.stringify(e)}\n\n`);
+      account.listeners.add(listener);
+      const ping = setInterval(() => res.write(': ping\n\n'), 25000);
+      req.on('close', () => { account.listeners.delete(listener); clearInterval(ping); }); return;
+    }
+    if (url.pathname === '/api/call' && req.method === 'POST') {
+      const chunks: Buffer[] = []; let size = 0;
+      for await (const chunk of req) { size += chunk.length; if (size > 1024 * 1024) { respond(413, 'Request too large'); return; } chunks.push(Buffer.from(chunk)); }
+      let body: any; try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { respond(400, 'Invalid JSON'); return; }
+      if (!body || typeof body.action !== 'string') { respond(400, 'action required'); return; }
+      try {
+        account.dashboard ??= account.router.session();
+        if (typeof body.deviceId === 'string') await account.dashboard.selectDevice(body.deviceId);
+        const result = body.action === 'hub.listDevices' ? await account.dashboard.listDevices() : await account.dashboard.request(body.action, body.params ?? {});
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify({ result }));
+      } catch (e) { res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify({ error: e instanceof Error ? e.message : String(e) })); }
+      return;
+    }
+    respond(404, 'Not found'); return;
+  }
+  if (url.pathname !== '/mcp') { respond(404, 'Not found'); return; }
   const authorization = req.headers.authorization;
   const account = authenticate(authorization?.startsWith('Bearer ') ? authorization.slice(7) : undefined, 'agentToken');
   if (!account) { res.setHeader('WWW-Authenticate', 'Bearer realm="mobilemcp"'); respond(401, 'Valid bearer token required'); return; }

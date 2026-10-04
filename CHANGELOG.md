@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.4.0] – 2026-10-05 (server only; app stays 0.3.0)
+
+- Hub dashboard at `/`: connected devices, live activity feed (action names, timings, error codes), per-device live view (screenshot with optional @ref marks, click-to-tap, keys, type/tap by text, snapshot tree). One self-contained Pico CSS page served by the hub.
+- Hub APIs for it: `GET /api/status`, `GET /api/events` (SSE), `POST /api/call`; agent-token authenticated, per-account.
+- Repository aligned with the Magi Labs standards: AGENTS.md, docs/ARCHITECTURE.md, decision records, third-party notices, PR template, `area:` labels.
+
 ## [0.3.0] – 2026-10-05
 
 Agent efficiency release. Snapshot responses are ~60% smaller on the same screens and most flows need no snapshot.

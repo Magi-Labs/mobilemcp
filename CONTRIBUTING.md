@@ -39,6 +39,10 @@ STEPS='[["get_device_info"],["get_screen_snapshot",{"maxNodes":20}]]' node serve
 - Launcher/OEM quirks documented in code comments next to the workaround (OxygenOS flip timing, Play Protect, no-tree windows).
 - No new permissions unless a tool needs them, and the app's UI must explain why.
 
+## Labels
+
+Shared labels (bug, enhancement, documentation, question, accessibility, good first issue, help wanted, duplicate, invalid, wontfix) follow the organization catalog. Area labels describe the three code areas and one recurring concern: `area:app` (Kotlin app), `area:hub` (hub daemon, hosting, auth, dashboard), `area:tools` (MCP tool surface and schemas), `area:launcher` (launcher/OEM-specific behaviour). Pick one work-type label and at most one area.
+
 ## Security
 
 The accessibility service can read and act on everything on the phone. Keep the hub authenticated for anything that is not loopback, never log screen content, and report vulnerabilities privately (see SECURITY.md).

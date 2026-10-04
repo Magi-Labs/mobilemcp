@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en" data-theme="auto">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MobileMCP hub</title>
+<style>/*PICO*/</style>
+<style>
+  :root { --pico-font-size: 95%; }
+  main { max-width: 1200px; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
+  .feed { max-height: 420px; overflow: auto; font-family: var(--pico-font-family-monospace); font-size: .8rem; }
+  .feed li { list-style: none; padding: .15rem 0; border-bottom: 1px solid var(--pico-muted-border-color); }
+  .ok { color: var(--pico-ins-color); } .err { color: var(--pico-del-color); } .muted { color: var(--pico-muted-color); }
+  #shot { max-width: 100%; border: 1px solid var(--pico-muted-border-color); border-radius: var(--pico-border-radius); cursor: crosshair; display: block; }
+  pre.tree { max-height: 460px; overflow: auto; font-size: .78rem; white-space: pre-wrap; }
+  .row { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
+  .row > * { margin-bottom: 0; }
+  small.badge { padding: .1rem .4rem; border-radius: 1rem; background: var(--pico-secondary-background); color: var(--pico-secondary-inverse); }
+</style>
+</head>
+<body>
+<main class="container">
+  <nav>
+    <ul><li><strong>MobileMCP hub</strong> <small class="muted">v{{VERSION}}</small></li></ul>
+    <ul><li id="hubState" class="muted">connecting…</li></ul>
+  </nav>
+
+  <section id="auth" hidden>
+    <article>
+      <header>Sign in</header>
+      <p>This hub is authenticated. Paste the agent token (the value agents send as <code>Authorization: Bearer</code>). It stays in this browser only.</p>
+      <form id="tokenForm" class="row"><input id="token" type="password" placeholder="agent token" autocomplete="off" required><button type="submit">Connect</button></form>
+      <p id="authError" class="err" hidden></p>
+    </article>
+  </section>
+
+  <section id="app" hidden>
+    <div class="grid-2">
+      <article>
+        <header class="row"><span>Devices</span> <small class="badge" id="deviceCount">0</small> <button class="outline secondary" id="refreshDevices" style="margin-left:auto">Refresh</button></header>
+        <table id="devices"><thead><tr><th>Name</th><th>Model</th><th>Connected</th><th>Last action</th><th>Requests</th><th></th></tr></thead><tbody></tbody></table>
+        <p id="noDevices" class="muted">No phone connected. Open the MobileMCP app, enable its accessibility service and tap Connect.</p>
+        <footer class="muted"><span id="sessions">0</span> agent session(s) · hub up <span id="uptime">0s</span></footer>
+      </article>
+      <article>
+        <header class="row"><span>Activity</span> <small class="muted">action names and timings only; no screen content</small></header>
+        <ul class="feed" id="feed"></ul>
+        <p id="noEvents" class="muted">Nothing yet.</p>
+      </article>
+    </div>
+
+    <article id="device" hidden>
+      <header class="row"><span>Live view — <span id="deviceName"></span></span>
+        <label style="margin-left:auto"><input type="checkbox" id="marks"> refs</label>
+        <label><input type="checkbox" id="auto"> auto-refresh</label>
+        <button class="outline secondary" id="shotBtn">Screenshot</button>
+        <button class="outline secondary" id="treeBtn">Snapshot</button>
+      </header>
+      <div class="grid-2">
+        <div>
+          <img id="shot" alt="Phone screen. Click to tap at that point." title="Click to tap">
+          <p class="muted" id="shotMeta">Take a screenshot. Clicking the image taps there; use the keys below for navigation.</p>
+          <div class="row">
+            <button class="outline" data-key="back">Back</button><button class="outline" data-key="home">Home</button><button class="outline" data-key="recents">Recents</button>
+            <button class="outline" data-key="notifications">Shade</button>
+          </div>
+          <form id="typeForm" class="row"><input id="typeText" placeholder="Type into the focused field…" autocomplete="off"><label><input type="checkbox" id="typeSubmit"> submit</label><button type="submit" class="outline">Type</button></form>
+          <form id="tapForm" class="row"><input id="tapText" placeholder='Tap by text, e.g. "Send"' autocomplete="off"><button type="submit" class="outline">Tap</button></form>
+        </div>
+        <div><pre class="tree" id="tree">—</pre><p class="muted" id="treeMeta"></p></div>
+      </div>
+      <footer id="callError" class="err" hidden></footer>
+    </article>
+
+    <article>
+      <header>Connect an agent</header>
+      <p>Claude Code / Cursor over HTTP: <code id="mcpUrl"></code> with header <code>Authorization: Bearer &lt;agent token&gt;</code>. Phones connect to <code id="wsUrl"></code> with the device token. Download the app: <a id="apkLink" href="#">app.apk</a>.</p>
+    </article>
+  </section>
+</main>
+<script>
+(() => {
+  const AUTH = '{{AUTH}}';
+  const $ = id => document.getElementById(id);
+  let token = AUTH === 'token' ? (localStorage.getItem('mobilemcp.token') || '') : '';
+  let selected = null, scale = 1, autoTimer = null, es = null;
+  const headers = () => token ? { Authorization: 'Bearer ' + token } : {};
+  const api = async (path, opts = {}) => { const r = await fetch(path, { ...opts, headers: { ...headers(), ...(opts.headers || {}) } }); if (r.status === 401) throw new Error('401'); return r.json(); };
+  const call = (action, params = {}) => api('/api/call', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ deviceId: selected, action, params }) });
+  const fmtAgo = iso => { const s = Math.max(0, (Date.now() - new Date(iso)) / 1000); return s < 60 ? Math.round(s) + 's' : s < 3600 ? Math.round(s / 60) + 'm' : Math.round(s / 3600) + 'h'; };
+  const fmtUp = ms => { const s = ms / 1000; return s < 3600 ? Math.round(s / 60) + 'm' : Math.round(s / 3600) + 'h'; };
+
+  function showAuth(err) { $('auth').hidden = false; $('app').hidden = true; $('hubState').textContent = 'signed out'; if (err) { $('authError').textContent = err; $('authError').hidden = false; } }
+  $('tokenForm').addEventListener('submit', e => { e.preventDefault(); token = $('token').value.trim(); localStorage.setItem('mobilemcp.token', token); boot(); });
+
+  function renderDevices(devices) {
+    const tb = $('devices').querySelector('tbody'); tb.innerHTML = '';
+    $('deviceCount').textContent = devices.length; $('noDevices').hidden = devices.length > 0;
+    for (const d of devices) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${esc(d.name)}</td><td class="muted">${esc(d.model || '')}</td><td>${fmtAgo(d.connectedAt)} ago</td><td class="muted">${d.lastAction ? esc(d.lastAction) + ' · ' + fmtAgo(d.lastActionAt) + ' ago' : '—'}</td><td>${d.requests || 0}</td><td><button class="outline secondary" data-id="${esc(d.id)}" data-name="${esc(d.name)}">Open</button></td>`;
+      tb.appendChild(tr);
+    }
+    if (devices.length === 1 && !selected) select(devices[0].id, devices[0].name);
+    if (selected && !devices.some(d => d.id === selected)) { selected = null; $('device').hidden = true; }
+  }
+  $('devices').addEventListener('click', e => { const b = e.target.closest('button[data-id]'); if (b) select(b.dataset.id, b.dataset.name); });
+  function select(id, name) { selected = id; $('deviceName').textContent = name; $('device').hidden = false; $('shot').removeAttribute('src'); $('tree').textContent = '—'; }
+
+  function addEvent(e, prepend = true) {
+    const li = document.createElement('li');
+    const t = e.t.slice(11, 19);
+    if (e.type === 'request') li.innerHTML = `<span class="muted">${t}</span> ${esc(e.device)} → ${esc(e.action)}`;
+    else if (e.type === 'response') li.innerHTML = `<span class="muted">${t}</span> ${esc(e.device)} ${esc(e.action)} <span class="${e.ok ? 'ok' : 'err'}">${e.ok ? 'ok' : esc(e.code || 'error')}</span> <span class="muted">${e.ms} ms</span>`;
+    else li.innerHTML = `<span class="muted">${t}</span> <strong>${esc(e.device)}</strong> ${e.type === 'device.connected' ? 'connected' : 'disconnected'}`;
+    const feed = $('feed'); prepend ? feed.prepend(li) : feed.append(li); while (feed.children.length > 200) feed.lastChild.remove(); $('noEvents').hidden = true;
+  }
+  function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+  async function status() {
+    const s = await api('/api/status');
+    $('hubState').textContent = `${s.hub.authenticated ? 'account ' + s.hub.account : 'local hub'} · ${s.devices.length} device(s)`;
+    $('sessions').textContent = s.sessions; $('uptime').textContent = fmtUp(s.hub.uptimeMs);
+    renderDevices(s.devices);
+    $('feed').innerHTML = ''; for (const e of s.events) addEvent(e, true);
+    if (e => e.type === 'device.connected' || e.type === 'device.disconnected' || e.type === 'response') {}
+  }
+  function stream() {
+    if (es) es.close();
+    es = new EventSource('/api/events' + (token ? '?token=' + encodeURIComponent(token) : ''));
+    es.onmessage = m => { const e = JSON.parse(m.data); addEvent(e); if (e.type.startsWith('device.')) status().catch(() => {}); };
+  }
+  async function boot() {
+    try { await status(); $('auth').hidden = true; $('app').hidden = false; $('authError').hidden = true; stream(); }
+    catch (e) { showAuth(e.message === '401' ? (token ? 'Token rejected.' : '') : 'Hub unreachable: ' + e.message); }
+    const origin = location.origin; $('mcpUrl').textContent = origin + '/mcp'; $('wsUrl').textContent = origin.replace(/^http/, 'ws') + '/device';
+    $('apkLink').href = '/app.apk' + (token ? '?token=' + encodeURIComponent(token) : '');
+  }
+  $('refreshDevices').addEventListener('click', () => status().catch(err => showAuth(err.message)));
+
+  // Live view
+  async function run(action, params) {
+    $('callError').hidden = true;
+    const r = await call(action, params);
+    if (r.error) { $('callError').textContent = r.error; $('callError').hidden = false; throw new Error(r.error); }
+    return r.result;
+  }
+  async function screenshot() {
+    const marks = $('marks').checked;
+    const r = await run('screen.screenshot', { maxWidth: 720, quality: 60, marks });
+    $('shot').src = r.screenshot; scale = r.scale;
+    $('shotMeta').textContent = `${r.width}×${r.height} · scale ${r.scale.toFixed(3)} · click to tap`;
+    if (marks && r.nodes) { $('tree').textContent = r.nodes.join('\n'); $('treeMeta').textContent = `${r.nodes.length} interactive nodes labelled`; }
+  }
+  async function snapshot() {
+    const r = await run('screen.snapshot', { maxNodes: 120, maxChars: 12000 });
+    $('tree').textContent = (r.nodes || []).join('\n') || '(empty tree)';
+    $('treeMeta').textContent = `${r.package || ''} ${r.activity ? '· ' + r.activity : ''} · ${r.total} nodes${r.truncated ? ' (truncated)' : ''}${r.noTree ? ' · window has no accessibility tree' : ''}`;
+  }
+  $('shotBtn').addEventListener('click', () => screenshot().catch(() => {}));
+  $('treeBtn').addEventListener('click', () => snapshot().catch(() => {}));
+  $('shot').addEventListener('click', async e => {
+    const img = $('shot'); if (!img.naturalWidth) return;
+    const rect = img.getBoundingClientRect();
+    const x = Math.round((e.clientX - rect.left) * (img.naturalWidth / rect.width) / scale);
+    const y = Math.round((e.clientY - rect.top) * (img.naturalHeight / rect.height) / scale);
+    try { await run('interact.tap', { x, y, observe: false }); setTimeout(() => screenshot().catch(() => {}), 700); } catch {}
+  });
+  document.querySelectorAll('button[data-key]').forEach(b => b.addEventListener('click', async () => { try { await run('interact.key', { key: b.dataset.key, observe: false }); setTimeout(() => screenshot().catch(() => {}), 700); } catch {} }));
+  $('typeForm').addEventListener('submit', async e => { e.preventDefault(); const text = $('typeText').value; if (!text) return; try { await run('interact.type', { text, submit: $('typeSubmit').checked, observe: false }); $('typeText').value = ''; setTimeout(() => screenshot().catch(() => {}), 700); } catch {} });
+  $('tapForm').addEventListener('submit', async e => { e.preventDefault(); const text = $('tapText').value.trim(); if (!text) return; try { await run('interact.tap', { text, timeout: 3000, observe: false }); setTimeout(() => screenshot().catch(() => {}), 700); } catch {} });
+  $('auto').addEventListener('change', () => { clearInterval(autoTimer); autoTimer = null; if ($('auto').checked) autoTimer = setInterval(() => { if (!document.hidden) screenshot().catch(() => {}); }, 3000); });
+
+  boot();
+})();
+</script>
+</body>
+</html>

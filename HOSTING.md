@@ -43,6 +43,10 @@ http:
 
 Caddy: `mobilemcp.example.com { reverse_proxy 10.10.0.2:17692 }`.
 
+## Dashboard
+
+The hub serves a dashboard at `/` (devices, live activity, per-device live view with click-to-tap). On an authenticated hub it asks for the agent token and keeps it in the browser's local storage. The API behind it: `GET /api/status`, `GET /api/events` (server-sent events; `?token=` accepted because EventSource cannot set headers) and `POST /api/call {deviceId?, action, params}`. Activity events never contain screen content.
+
 ## Connect
 
 - Phone app: hub URL `wss://mobilemcp.example.com`, device token = `MOBILEMCP_TOKEN`.
