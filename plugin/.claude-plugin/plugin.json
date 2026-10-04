@@ -1,6 +1,6 @@
 {
   "name": "mobilemcp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Use your real Android phone from Claude Code: read the screen tree, tap, type, scroll, open apps.",
   "author": { "name": "Deepak Silaych", "url": "https://github.com/Magi-Labs/mobilemcp" },
   "homepage": "https://github.com/Magi-Labs/mobilemcp",

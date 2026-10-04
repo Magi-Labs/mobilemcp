@@ -28,13 +28,13 @@ class Dispatcher(private val svc: MobileAccessibilityService) {
             "interact.pinch" -> observed(params) { inter.pinch(params) }
             "interact.scrollUntil" -> observed(params) { inter.scrollUntil(params, deadline).also { if (it.has("error")) throw ActionError(it.getString("error")) } }
             "screen.readText" -> obs.readText(params)
-            "apps.uninstall" -> observed(params) { sys.uninstall(params.optString("package", "")) }
+            "apps.uninstall" -> observed(params, launch = true) { sys.uninstall(params.optString("package", "")) }
             "notifications.list" -> MobileNotificationListener.require().list(params.optString("package", ""), params.optString("query", ""), params.optInt("limit", 30), params.optBoolean("includeOngoing", false))
-            "notifications.open" -> observed(params) { MobileNotificationListener.require().open(params.optString("key", "")) }
+            "notifications.open" -> observed(params, launch = true) { MobileNotificationListener.require().open(params.optString("key", "")) }
             "notifications.act" -> MobileNotificationListener.require().act(params.optString("key", ""), params.opt("action") ?: 0, params.optString("text", "").ifEmpty { null })
             "notifications.dismiss" -> MobileNotificationListener.require().dismiss(params.optString("key", "").ifEmpty { null }, params.optBoolean("all", false))
-            "system.openSettings" -> observed(params) { sys.openSettings(params.optString("page", ""), params.optString("package", "")) }
-            "system.startIntent" -> observed(params) { sys.startIntent(params) }
+            "system.openSettings" -> observed(params, launch = true) { sys.openSettings(params.optString("page", ""), params.optString("package", "")) }
+            "system.startIntent" -> observed(params, launch = true) { sys.startIntent(params) }
             "system.media" -> sys.media(params.optString("command", ""))
             "system.volume" -> sys.volume(params)
             "system.brightness" -> sys.brightness(params)
@@ -43,7 +43,7 @@ class Dispatcher(private val svc: MobileAccessibilityService) {
             "system.flashlight" -> sys.flashlight(params.optBoolean("on", true))
             "system.wake" -> observed(params) { sys.wake() }
             "interact.scroll" -> observed(params) { inter.scroll(params) }
-            "interact.key" -> observed(params) { inter.key(params) }
+            "interact.key" -> observed(params, launch = true) { inter.key(params) }
             "interact.setClipboard" -> inter.setClipboard(params.optString("text", ""))
             "apps.list" -> apps.list(params.optString("query", ""), params.optInt("limit", 100))
             "apps.open" -> observed(params) { apps.open(params.optString("app", "")) }
@@ -59,12 +59,12 @@ class Dispatcher(private val svc: MobileAccessibilityService) {
         return result
     }
 
-    private fun observed(params: JSONObject, block: () -> JSONObject): JSONObject {
+    private fun observed(params: JSONObject, launch: Boolean = false, block: () -> JSONObject): JSONObject {
         val started = System.currentTimeMillis()
         val result = block()
         result.put("elapsedMs", System.currentTimeMillis() - started)
         if (params.optBoolean("observe", true)) {
-            obs.settle(since = started)
+            obs.settle(since = started, window = launch)
             val opts = JSONObject().put("maxNodes", params.optInt("maxNodes", 30)).put("maxChars", params.optInt("maxChars", 1500))
             params.optString("observationScope", "").takeIf { it.isNotEmpty() }?.let { opts.put("scope", it) }
             result.put("observation", try { obs.snapshot(opts, compact = true) } catch (e: ActionError) { JSONObject().put("error", e.message) })
@@ -84,6 +84,7 @@ class Dispatcher(private val svc: MobileAccessibilityService) {
             .put("interactive", svc.getSystemService(android.os.PowerManager::class.java).isInteractive)
             .put("locked", svc.getSystemService(android.app.KeyguardManager::class.java).isKeyguardLocked)
             .put("permissions", SystemActions.permissions(svc))
+            .put("windows", obs.windowSummary())
             .put("battery", bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)).put("charging", bm.isCharging)
             .put("appVersion", BuildConfig.VERSION_NAME)
     }

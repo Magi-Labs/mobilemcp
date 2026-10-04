@@ -50,9 +50,9 @@ export function registerInteractTools(mcp: McpServer, bridge: Bridge): void {
     inputSchema: {
       fromRef: refSchema.optional(), fromX: z.number().int().optional(), fromY: z.number().int().optional(),
       toRef: refSchema.optional(), toX: z.number().int().optional(), toY: z.number().int().optional(),
-      holdMs: z.number().int().min(100).max(5000).optional().describe('Long-press duration before moving, default 700.'),
-      moveMs: z.number().int().min(100).max(5000).optional().describe('Movement duration, default 600.'),
-      hoverMs: z.number().int().min(0).max(5000).optional().describe('Pause over the target before releasing (launchers need ~400ms to open a folder/merge), default 500.'),
+      holdMs: z.number().int().min(100).max(5000).optional().describe('Long-press duration before moving, default 900.'),
+      moveMs: z.number().int().min(100).max(5000).optional().describe('Movement duration, default 300. Keep it short for launchers: slow passes trigger reorder instead of folder merge.'),
+      hoverMs: z.number().int().min(0).max(5000).optional().describe('Pause over the target before releasing, default 250. Launchers merge icons into a folder on a short hover and reorder on a long one (>600ms).'),
       ...actionObservationSchema,
     },
   }, async args => bridgeCall(bridge, 'interact.drag', args));

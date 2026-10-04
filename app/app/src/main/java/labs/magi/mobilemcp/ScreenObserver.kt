@@ -43,9 +43,10 @@ class ScreenObserver(private val svc: MobileAccessibilityService) {
             val root = w.root ?: continue
             // Status/navigation bars are SystemUI windows that are never active; the shade and system dialogs are.
             if (!w.isActive && root.packageName == "com.android.systemui") continue
-            roots.add("w${w.id}" to root)
+            // Keys are prefixed by the window's package, not its id: ids change on rotation and relaunch, packages do not.
+            roots.add((root.packageName?.toString() ?: "w${w.id}") to root)
         }
-        if (roots.isEmpty()) svc.rootInActiveWindow?.let { roots.add("w0" to it) }
+        if (roots.isEmpty() && windows.isEmpty()) svc.rootInActiveWindow?.let { roots.add("w0" to it) }
         val pkg = currentPackage()
         if (pkg != refPackage) { refPackage = pkg; state = states.getOrPut(pkg ?: "") { RefState() } }
         val out = ArrayList<Rec>(256); val occurrence = HashMap<String, Int>()
@@ -53,7 +54,17 @@ class ScreenObserver(private val svc: MobileAccessibilityService) {
         return out
     }
 
-    fun currentPackage(): String? = svc.rootInActiveWindow?.packageName?.toString() ?: svc.foregroundPackage
+    /** Package of the active window (the one receiving input), falling back to the active root and the last activity event. */
+    fun currentPackage(): String? {
+        val windows = try { svc.windows } catch (_: Exception) { emptyList<AccessibilityWindowInfo>() }
+        val active = windows.firstOrNull { it.isActive }
+        // An active window without a retrievable tree (some system pages) must not fall back to a stale root: trust the last activity event.
+        if (active != null && active.root == null) return svc.foregroundPackage ?: svc.rootInActiveWindow?.packageName?.toString()
+        return active?.root?.packageName?.toString() ?: svc.rootInActiveWindow?.packageName?.toString() ?: svc.foregroundPackage
+    }
+
+    /** Title of the active window when it exposes no tree, else null. */
+    fun activeWindowWithoutTree(): String? = try { svc.windows.firstOrNull { it.isActive && it.type == AccessibilityWindowInfo.TYPE_APPLICATION && it.root == null }?.let { it.title?.toString() ?: "untitled" } } catch (_: Exception) { null }
 
     private fun walk(node: AccessibilityNodeInfo, depth: Int, parentKey: String?, out: MutableList<Rec>, occ: MutableMap<String, Int>, prefix: String) {
         if (depth > 60 || out.size > 5000) return
@@ -169,6 +180,7 @@ class ScreenObserver(private val svc: MobileAccessibilityService) {
             .put("screen", screenInfo())
             .put("keyboard", keyboardVisible())
             .put("total", recs.size)
+        activeWindowWithoutTree()?.let { result.put("noTree", true).put("window", it).put("hint", "The foreground window exposes no accessibility tree; use take_screenshot and coordinate taps, or press back.") }
         if (truncated) result.put("truncated", true).put("nextOffset", index)
         if (offset == 0) { history.addLast(version to lines); while (history.size > 6) history.removeFirst() }
 
@@ -206,7 +218,10 @@ class ScreenObserver(private val svc: MobileAccessibilityService) {
             }
             for (i in 0 until n.childCount) { val c = n.getChild(i) ?: continue; visit(c, depth + 1) }
         }
-        if (root != null) visit(root, 0) else for (rec in collect().filter { it.depth == 0 || it.parentKey == null }) visit(rec.node, 0)
+        if (root != null) visit(root, 0) else {
+            val roots = collect().filter { it.depth == 0 }.map { it.node }.ifEmpty { listOfNotNull(svc.rootInActiveWindow) }
+            for (r in roots) visit(r, 0)
+        }
         val all = sb.toString()
         val slice = all.substring(minOf(offset, all.length)).take(maxChars)
         val r = JSONObject().put("text", slice).put("chars", all.length).put("package", currentPackage())
@@ -231,6 +246,19 @@ class ScreenObserver(private val svc: MobileAccessibilityService) {
         return JSONObject().put("w", b.width()).put("h", b.height()).put("orientation", orientation)
     }
 
+    /** One entry per accessibility window: what the service can see and whether the window exposes a tree. */
+    fun windowSummary(): JSONArray {
+        val arr = JSONArray()
+        val windows = try { svc.windows } catch (_: Exception) { return arr }
+        for (w in windows.sortedByDescending { it.layer }) {
+            val root = w.root
+            val type = when (w.type) { AccessibilityWindowInfo.TYPE_APPLICATION -> "app"; AccessibilityWindowInfo.TYPE_INPUT_METHOD -> "ime"; AccessibilityWindowInfo.TYPE_SYSTEM -> "system"; AccessibilityWindowInfo.TYPE_ACCESSIBILITY_OVERLAY -> "a11y"; else -> w.type.toString() }
+            arr.put(JSONObject().put("id", w.id).put("type", type).put("title", w.title?.toString()).put("package", root?.packageName?.toString())
+                .put("active", w.isActive).put("focused", w.isFocused).put("layer", w.layer).put("tree", root != null).put("children", root?.childCount ?: -1))
+        }
+        return arr
+    }
+
     fun keyboardVisible(): Boolean = try { svc.windows.any { it.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD } } catch (_: Exception) { false }
 
     // ---- waiting ----------------------------------------------------------------------------------------------
@@ -240,8 +268,10 @@ class ScreenObserver(private val svc: MobileAccessibilityService) {
      * newer than `since` (an action with no visible effect returns after that), then until 250ms pass without events,
      * bounded by `maxMs`.
      */
-    fun settle(since: Long = System.currentTimeMillis(), reactMs: Long = 700, maxMs: Long = 2000) {
+    fun settle(since: Long = System.currentTimeMillis(), reactMs: Long = 700, maxMs: Long = 2000, window: Boolean = false) {
         val start = System.currentTimeMillis()
+        // Launch-type actions: wait for a new window (activity/dialog) rather than the first content tick of the old one.
+        if (window) { while (svc.lastWindowChange < since && System.currentTimeMillis() - start < 2500) Thread.sleep(40) }
         while (svc.lastContentChange < since && System.currentTimeMillis() - start < reactMs) Thread.sleep(30)
         if (svc.lastContentChange < since) return
         while (System.currentTimeMillis() - svc.lastContentChange < 250 && System.currentTimeMillis() - start < maxMs) Thread.sleep(40)

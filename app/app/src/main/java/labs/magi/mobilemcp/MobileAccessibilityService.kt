@@ -18,6 +18,7 @@ class MobileAccessibilityService : AccessibilityService() {
     @Volatile var foregroundPackage: String? = null
     @Volatile var foregroundActivity: String? = null
     @Volatile var lastContentChange: Long = 0L
+    @Volatile var lastWindowChange: Long = 0L
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -38,7 +39,7 @@ class MobileAccessibilityService : AccessibilityService() {
                 if (pkg != null && cls != null && !cls.startsWith("android.widget.") && !cls.startsWith("android.view.")) {
                     foregroundPackage = pkg; foregroundActivity = cls
                 }
-                lastContentChange = System.currentTimeMillis()
+                lastWindowChange = System.currentTimeMillis(); lastContentChange = lastWindowChange
             }
             AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED, AccessibilityEvent.TYPE_VIEW_SCROLLED -> lastContentChange = System.currentTimeMillis()
         }

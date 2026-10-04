@@ -76,8 +76,9 @@ class Interactions(private val svc: MobileAccessibilityService, private val obs:
         while (node != null && !node.isScrollable && hops < 8) { node = node.parent; hops++ }
         if (node != null && node.isScrollable) {
             var done = 0
-            repeat(amount) { if (node!!.performAction(if (forward) AccessibilityNodeInfo.ACTION_SCROLL_FORWARD else AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)) { done++; Thread.sleep(300) } else return@repeat }
-            if (done > 0) return JSONObject().put("ok", true).put("method", "node").put("pages", done).put("atEnd", done < amount)
+            for (i in 0 until amount) { if (node.performAction(if (forward) AccessibilityNodeInfo.ACTION_SCROLL_FORWARD else AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)) { done++; Thread.sleep(300) } else break }
+            // A scrollable that refuses the action is at its end; do not fall through to blind swipes.
+            return JSONObject().put("ok", true).put("method", "node").put("pages", done).put("atEnd", done < amount)
         }
         // Gesture fallback: finger moves opposite to the reveal direction, inside the target or the screen.
         val region = Rect(); if (node != null) node.getBoundsInScreen(region) else screenRect().let { region.set(it) }
@@ -100,31 +101,44 @@ class Interactions(private val svc: MobileAccessibilityService, private val obs:
         return JSONObject().put("ok", true).put("from", from).put("to", to)
     }
 
-    /** Long-press, drag, hover, release as one continuous touch (three chained strokes). */
+    /**
+     * Long-press, drag, hover, release as ONE stroke. Gesture time is distributed along path length, so the hold and
+     * hover phases are encoded as tiny 2px back-and-forth segments (well inside touch slop) whose total length gives
+     * them the requested share of the duration. This avoids willContinue/continueStroke, whose pointer-up timing
+     * differs between launchers and OS versions.
+     */
     fun drag(p: JSONObject): JSONObject {
-        val from = point(p, "fromRef", "fromX", "fromY"); val to = point(p, "toRef", "toX", "toY")
-        val hold = p.optInt("holdMs", 700).coerceIn(100, 5000).toLong()
-        val move = p.optInt("moveMs", 600).coerceIn(100, 5000).toLong()
-        val hover = p.optInt("hoverMs", 500).coerceIn(0, 5000).toLong()
+        val from = point(p, "fromRef", "fromX", "fromY", grab = true); val to = point(p, "toRef", "toX", "toY")
+        val hold = p.optInt("holdMs", 900).coerceIn(100, 5000); val move = p.optInt("moveMs", 300).coerceIn(100, 5000); val hover = p.optInt("hoverMs", 250).coerceIn(0, 5000)
         val (fx, fy) = from; val (tx, ty) = to
-        val press = Path().apply { moveTo(fx.toFloat(), fy.toFloat()) }
-        val s1 = GestureDescription.StrokeDescription(press, 0, hold, true)
-        if (!dispatch(GestureDescription.Builder().addStroke(s1).build())) fail("DRAG_FAILED", "Long press was cancelled")
-        val line = Path().apply { moveTo(fx.toFloat(), fy.toFloat()); lineTo(tx.toFloat(), ty.toFloat()) }
-        val s2 = s1.continueStroke(line, 0, move, hover > 0)
-        if (!dispatch(GestureDescription.Builder().addStroke(s2).build())) fail("DRAG_FAILED", "Drag movement was cancelled")
-        if (hover > 0) {
-            val stay = Path().apply { moveTo(tx.toFloat(), ty.toFloat()) }
-            val s3 = s2.continueStroke(stay, 0, hover, false)
-            if (!dispatch(GestureDescription.Builder().addStroke(s3).build())) fail("DRAG_FAILED", "Release was cancelled")
-        }
-        return JSONObject().put("ok", true).put("from", "$fx,$fy").put("to", "$tx,$ty")
+        val dist = Math.hypot((tx - fx).toDouble(), (ty - fy).toDouble()).coerceAtLeast(8.0)
+        val speed = dist / move  // px per ms during the move
+        val path = Path().apply { moveTo(fx.toFloat(), fy.toFloat()) }
+        jitter(path, fx, fy, speed * hold)
+        path.lineTo(tx.toFloat(), ty.toFloat())
+        jitter(path, tx, ty, speed * hover)
+        val ok = dispatch(GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(path, 0, (hold + move + hover).toLong())).build())
+        if (!ok) fail("DRAG_FAILED", "Gesture was cancelled by the system")
+        return JSONObject().put("ok", true).put("from", "$fx,$fy").put("to", "$tx,$ty").put("holdMs", hold).put("moveMs", move).put("hoverMs", hover)
     }
 
-    /** Resolves a ref to its center or takes explicit coordinates. */
-    private fun point(p: JSONObject, refKey: String, xKey: String, yKey: String): Pair<Int, Int> {
+    /** Appends back-and-forth 2px segments at (x,y) totalling `length` px so the sampler dwells there. */
+    private fun jitter(path: Path, x: Int, y: Int, length: Double) {
+        var remaining = length; var flip = false
+        while (remaining > 0) { flip = !flip; path.lineTo((x + if (flip) 1 else 0).toFloat(), y.toFloat()); remaining -= 1.0 }
+        path.lineTo(x.toFloat(), y.toFloat())
+    }
+
+    /**
+     * Resolves a ref to a touch point or takes explicit coordinates. `grab` picks the icon image of a tall icon+label
+     * cell (launchers, app grids) so a dragged icon's visual center follows the finger exactly.
+     */
+    private fun point(p: JSONObject, refKey: String, xKey: String, yKey: String, grab: Boolean = false): Pair<Int, Int> {
         val ref = p.optString(refKey, "")
-        if (ref.isNotEmpty()) { val r = Rect(); obs.resolve(ref).node.getBoundsInScreen(r); return r.centerX() to r.centerY() }
+        if (ref.isNotEmpty()) {
+            val r = Rect(); obs.resolve(ref).node.getBoundsInScreen(r)
+            return if (grab && r.height() > r.width() * 1.15 && r.width() in 80..400) r.centerX() to (r.top + r.width() / 2) else r.centerX() to r.centerY()
+        }
         if (!p.has(xKey) || !p.has(yKey)) fail("BAD_ARGS", "Pass $refKey or both $xKey and $yKey.")
         return p.getInt(xKey) to p.getInt(yKey)
     }
@@ -166,7 +180,13 @@ class Interactions(private val svc: MobileAccessibilityService, private val obs:
         return null
     }
 
-    private fun largestScrollable(): AccessibilityNodeInfo? = obs.collect().filter { it.node.isScrollable }.maxByOrNull { val r = Rect(); it.node.getBoundsInScreen(r); r.width().toLong() * r.height() }?.node
+    /** The innermost scrollable covering at least 30% of the screen: content lists, not the collapsing-header container around them. */
+    private fun largestScrollable(): AccessibilityNodeInfo? {
+        val screen = screenRect(); val minArea = screen.width().toLong() * screen.height() * 3 / 10
+        val candidates = obs.collect().filter { it.node.isScrollable }.map { rec -> val r = Rect(); rec.node.getBoundsInScreen(r); Triple(rec, rec.depth, r.width().toLong() * r.height()) }
+        val large = candidates.filter { it.third >= minArea }
+        return (large.maxWithOrNull(compareBy({ it.second }, { it.third })) ?: candidates.maxByOrNull { it.third })?.first?.node
+    }
 
     private fun screenRect(): Rect { val s = obs.screenInfo(); return Rect(0, 0, s.getInt("w"), s.getInt("h")) }
 

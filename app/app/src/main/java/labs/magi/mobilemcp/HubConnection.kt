@@ -33,7 +33,14 @@ class HubConnection(private val ctx: Context, private val dispatcher: Dispatcher
     @Volatile var connected = false; private set
     private var attempt = 0
 
-    fun connect() { enabled = true; attempt = 0; main.removeCallbacks(reconnectRunnable); open() }
+    @Volatile private var currentUrl: String? = null
+
+    /** Idempotent: an established connection to the same URL is kept; a changed URL or a dead socket reconnects. */
+    fun connect() {
+        val url = normalize(Prefs.hubUrl(ctx))
+        if (enabled && connected && url == currentUrl) { Status.log("Already connected"); return }
+        enabled = true; attempt = 0; main.removeCallbacks(reconnectRunnable); open()
+    }
 
     fun disconnect() {
         enabled = false; main.removeCallbacks(reconnectRunnable)
@@ -44,7 +51,7 @@ class HubConnection(private val ctx: Context, private val dispatcher: Dispatcher
     private fun open() {
         if (!enabled) return
         val url = normalize(Prefs.hubUrl(ctx)) ?: run { Status.set("Set a hub URL first"); enabled = false; return }
-        ws?.cancel()
+        ws?.cancel(); currentUrl = url
         Status.set("Connecting to $url")
         ws = client.newWebSocket(Request.Builder().url(url).build(), listener)
     }
