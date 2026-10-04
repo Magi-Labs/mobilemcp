@@ -66,9 +66,14 @@ export function registerInteractTools(mcp: McpServer, bridge: Bridge): void {
     inputSchema: { text: z.string().min(1).max(300), ref: refSchema.optional(), direction: z.enum(['down', 'up', 'left', 'right']).optional(), maxPages: z.number().int().min(1).max(50).optional(), timeout: z.number().int().min(1000).max(60000).optional(), ...actionObservationSchema },
   }, async args => bridgeCall(bridge, 'interact.scrollUntil', args));
   mcp.registerTool('gesture', {
-    description: 'Custom touch sequence compiled into one continuous touch: steps of down (x,y|ref), wait (ms), move (x,y|ref over ms), up. Example long-press-drag with a page flip: [{type:"down",ref:"@4"},{type:"wait",ms:900},{type:"move",x:15,y:1200,ms:300},{type:"wait",ms:1300},{type:"move",x:288,y:462,ms:300},{type:"wait",ms:250},{type:"up"}]. Add finger:1 on steps for a second concurrent finger (pinch, two-finger swipe).',
+    description: 'Composable touch sequence executed as one continuous multi-finger touch. Atoms: down (x,y|ref), wait (ms), move (x,y|ref over ms, straight line; chain moves for curves), up. Sugar: tap, longpress (ms), swipe (toX,toY|toRef, ms). Steps with the same finger (default 0) form one stroke; different fingers run concurrently (pinch, rotate, two-finger swipe). Up to 10 fingers, 60 s total. Example long-press, drag to the screen edge, wait for the page flip, drop on a folder: [{type:"down",ref:"@4"},{type:"wait",ms:900},{type:"move",x:1068,y:1200,ms:300},{type:"wait",ms:700},{type:"move",x:288,y:462,ms:300},{type:"wait",ms:250},{type:"up"}]. Combine with keys, app launches, waits and snapshots in run_mobile_actions for anything longer.',
     inputSchema: {
-      steps: z.array(z.object({ type: z.enum(['down', 'move', 'wait', 'up']), x: z.number().int().optional(), y: z.number().int().optional(), ref: refSchema.optional(), ms: z.number().int().min(0).max(10000).optional(), finger: z.number().int().min(0).max(4).optional() })).min(2).max(40),
+      steps: z.array(z.object({
+        type: z.enum(['down', 'move', 'wait', 'up', 'tap', 'longpress', 'swipe']),
+        x: z.number().int().optional(), y: z.number().int().optional(), ref: refSchema.optional(),
+        toX: z.number().int().optional(), toY: z.number().int().optional(), toRef: refSchema.optional(),
+        ms: z.number().int().min(0).max(10000).optional(), finger: z.number().int().min(0).max(9).optional(),
+      })).min(1).max(60),
       ...actionObservationSchema,
     },
   }, async args => bridgeCall(bridge, 'interact.gesture', args));

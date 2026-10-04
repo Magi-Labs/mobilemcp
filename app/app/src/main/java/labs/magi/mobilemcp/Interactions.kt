@@ -10,6 +10,7 @@ import android.os.Build
 import android.os.Bundle
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction
+import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -134,7 +135,19 @@ class Interactions(private val svc: MobileAccessibilityService, private val obs:
      * (fingers run concurrently, keyed by `finger`). Waits are 1px dwell jitter so the pointer stays down.
      */
     fun gesture(p: JSONObject): JSONObject {
-        val steps = p.optJSONArray("steps") ?: fail("BAD_ARGS", "steps[] required")
+        val raw = p.optJSONArray("steps") ?: fail("BAD_ARGS", "steps[] required")
+        // Sugar steps expand into the four atoms so anything composes: tap = down+up, longpress = down+wait+up, swipe = down+move+up.
+        val steps = JSONArray()
+        for (i in 0 until raw.length()) {
+            val st = raw.getJSONObject(i); val f = st.optInt("finger", 0)
+            fun atom(type: String, src: JSONObject? = null, ms: Int? = null) = JSONObject().put("type", type).put("finger", f).also { o -> src?.let { if (it.has("ref")) o.put("ref", it.getString("ref")); if (it.has("x")) o.put("x", it.getInt("x")); if (it.has("y")) o.put("y", it.getInt("y")) }; ms?.let { o.put("ms", it) } }
+            when (st.optString("type", "")) {
+                "tap" -> { steps.put(atom("down", st)); steps.put(atom("wait", ms = st.optInt("ms", 60))); steps.put(atom("up")) }
+                "longpress" -> { steps.put(atom("down", st)); steps.put(atom("wait", ms = st.optInt("ms", 800))); steps.put(atom("up")) }
+                "swipe" -> { val to = JSONObject().put("x", st.optInt("toX")).put("y", st.optInt("toY")); if (st.has("toRef")) to.put("ref", st.getString("toRef")); steps.put(atom("down", st)); steps.put(atom("move", to, st.optInt("ms", 300))); steps.put(atom("up")) }
+                else -> steps.put(st)
+            }
+        }
         class Finger { var x = 0; var y = 0; var down = false; val path = Path(); var length = 0.0; var moveMs = 0; var waitMs = 0; val waits = ArrayList<Triple<Int, Int, Int>>(); val legs = ArrayList<Triple<Int, Int, Int>>() }
         // First pass: collect per-finger legs (move) and dwells (wait) in order; second pass builds paths with a uniform speed.
         data class Op(val kind: String, val x: Int, val y: Int, val ms: Int)
