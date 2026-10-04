@@ -31,6 +31,10 @@
             android:text="1. Enable accessibility service" />
         <Button android:id="@+id/connect" android:layout_width="match_parent" android:layout_height="wrap_content"
             android:text="2. Connect" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:textSize="13sp"
+            android:text="Optional permissions: notification access enables reading/replying to notifications and Do Not Disturb; modify system settings enables brightness and rotation." />
+        <Button android:id="@+id/notificationAccess" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Notification access" />
+        <Button android:id="@+id/writeSettings" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Modify system settings" />
         <Button android:id="@+id/battery" android:layout_width="match_parent" android:layout_height="wrap_content"
             android:text="Allow background (ignore battery optimization)" />
 

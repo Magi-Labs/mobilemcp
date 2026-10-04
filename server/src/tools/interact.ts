@@ -5,12 +5,13 @@ import { refSchema, actionObservationSchema, bridgeCall } from './helpers.js';
 export const KEYS = ['back', 'home', 'recents', 'notifications', 'quick_settings', 'power', 'lock', 'enter', 'dismiss_notifications'] as const;
 export function registerInteractTools(mcp: McpServer, bridge: Bridge): void {
   mcp.registerTool('tap', {
-    description: 'Tap an @ref (preferred) or screen coordinates. Uses the accessibility click of the node or its nearest clickable ancestor, otherwise a real touch at its center. longPress:true for long press.',
+    description: 'Tap an @ref (preferred) or screen coordinates. Uses the accessibility click of the node or its nearest clickable ancestor, otherwise a real touch at its center. longPress:true for long press, doubleTap:true for double tap.',
     inputSchema: {
       ref: refSchema.optional(),
       x: z.number().int().nonnegative().optional().describe('Screen x in pixels; requires y. Fallback when no node exists.'),
       y: z.number().int().nonnegative().optional(),
       longPress: z.boolean().optional(),
+      doubleTap: z.boolean().optional(),
       ...actionObservationSchema,
     },
   }, async args => bridgeCall(bridge, 'interact.tap', args));
@@ -55,6 +56,14 @@ export function registerInteractTools(mcp: McpServer, bridge: Bridge): void {
       ...actionObservationSchema,
     },
   }, async args => bridgeCall(bridge, 'interact.drag', args));
+  mcp.registerTool('pinch', {
+    description: 'Two-finger pinch centered on an @ref or x,y: direction in (zoom out) or out (zoom in). distance is the finger travel in pixels (default 300). Maps, photos, web pages.',
+    inputSchema: { direction: z.enum(['in', 'out']), ref: refSchema.optional(), x: z.number().int().optional(), y: z.number().int().optional(), distance: z.number().int().min(50).max(1500).optional(), duration: z.number().int().min(100).max(3000).optional(), ...actionObservationSchema },
+  }, async args => bridgeCall(bridge, 'interact.pinch', args));
+  mcp.registerTool('scroll_until', {
+    description: 'Scroll a list (ref or main scrollable) page by page until text appears on screen, then return its @ref. Up to maxPages (default 10) within timeout.',
+    inputSchema: { text: z.string().min(1).max(300), ref: refSchema.optional(), direction: z.enum(['down', 'up', 'left', 'right']).optional(), maxPages: z.number().int().min(1).max(50).optional(), timeout: z.number().int().min(1000).max(60000).optional(), ...actionObservationSchema },
+  }, async args => bridgeCall(bridge, 'interact.scrollUntil', args));
   mcp.registerTool('press_key', {
     description: 'System keys: back, home, recents, notifications, quick_settings, power (dialog), lock, dismiss_notifications, enter (keyboard action on the focused field).',
     inputSchema: { key: z.enum(KEYS), ...actionObservationSchema },

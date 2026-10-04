@@ -186,6 +186,34 @@ class ScreenObserver(private val svc: MobileAccessibilityService) {
         return result
     }
 
+    /** Assigns (or reuses) the ref for a collected node and returns its snapshot line. */
+    @Synchronized
+    fun refFor(rec: Rec): String { val ref = refByKey.getOrPut(rec.key) { state.nextRef++ }; keyByRef[ref] = rec.key; return "@$ref ${rec.line}" }
+
+    /** Full text under a ref (or the whole screen), one node per line, untruncated. */
+    @Synchronized
+    fun readText(params: JSONObject): JSONObject {
+        val maxChars = params.optInt("maxChars", 50_000).coerceIn(500, 200_000); val offset = params.optInt("offset", 0).coerceAtLeast(0)
+        val ref = params.optString("ref", "")
+        val root: AccessibilityNodeInfo? = if (ref.isNotEmpty()) resolve(ref).node else null
+        val sb = StringBuilder()
+        fun visit(n: AccessibilityNodeInfo, depth: Int) {
+            if (depth > 60 || sb.length > maxChars + offset + 1000) return
+            if (n.isVisibleToUser) {
+                val t = n.text?.takeIf { !n.isShowingHintText }?.toString()?.trim().orEmpty()
+                val d = n.contentDescription?.toString()?.trim().orEmpty()
+                if (t.isNotEmpty()) sb.append(t).append('\n') else if (d.isNotEmpty() && (n.childCount == 0 || n.isClickable)) sb.append(d).append('\n')
+            }
+            for (i in 0 until n.childCount) { val c = n.getChild(i) ?: continue; visit(c, depth + 1) }
+        }
+        if (root != null) visit(root, 0) else for (rec in collect().filter { it.depth == 0 || it.parentKey == null }) visit(rec.node, 0)
+        val all = sb.toString()
+        val slice = all.substring(minOf(offset, all.length)).take(maxChars)
+        val r = JSONObject().put("text", slice).put("chars", all.length).put("package", currentPackage())
+        if (offset + slice.length < all.length) r.put("truncated", true).put("nextOffset", offset + slice.length)
+        return r
+    }
+
     fun parseRef(s: String): Int = s.trim().removePrefix("@").toIntOrNull() ?: fail("BAD_REF", "Expected an @ref like @12, got '$s'.")
 
     /** Finds the live node for an @ref by re-collecting and matching its identity key. */

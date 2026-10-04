@@ -2,7 +2,7 @@
   "private": true,
   "name": "mobilemcp-workspace",
   "description": "MCP server that lets AI use your real Android phone through its accessibility service",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "license": "MIT",
   "author": "Deepak Silaych",
   "repository": { "type": "git", "url": "https://github.com/Magi-Labs/mobilemcp.git" },

@@ -11,6 +11,7 @@ class Dispatcher(private val svc: MobileAccessibilityService) {
     private val inter = Interactions(svc, obs)
     private val shots = Screenshots(svc)
     private val apps = Apps(svc, obs)
+    private val sys = SystemActions(svc)
 
     fun handle(action: String, params: JSONObject): JSONObject {
         val deadline = Deadline.from(params)
@@ -24,6 +25,23 @@ class Dispatcher(private val svc: MobileAccessibilityService) {
             "interact.type" -> observed(params) { inter.type(params) }
             "interact.swipe" -> observed(params) { inter.swipe(params) }
             "interact.drag" -> observed(params) { inter.drag(params) }
+            "interact.pinch" -> observed(params) { inter.pinch(params) }
+            "interact.scrollUntil" -> observed(params) { inter.scrollUntil(params, deadline).also { if (it.has("error")) throw ActionError(it.getString("error")) } }
+            "screen.readText" -> obs.readText(params)
+            "apps.uninstall" -> observed(params) { sys.uninstall(params.optString("package", "")) }
+            "notifications.list" -> MobileNotificationListener.require().list(params.optString("package", ""), params.optString("query", ""), params.optInt("limit", 30), params.optBoolean("includeOngoing", false))
+            "notifications.open" -> observed(params) { MobileNotificationListener.require().open(params.optString("key", "")) }
+            "notifications.act" -> MobileNotificationListener.require().act(params.optString("key", ""), params.opt("action") ?: 0, params.optString("text", "").ifEmpty { null })
+            "notifications.dismiss" -> MobileNotificationListener.require().dismiss(params.optString("key", "").ifEmpty { null }, params.optBoolean("all", false))
+            "system.openSettings" -> observed(params) { sys.openSettings(params.optString("page", ""), params.optString("package", "")) }
+            "system.startIntent" -> observed(params) { sys.startIntent(params) }
+            "system.media" -> sys.media(params.optString("command", ""))
+            "system.volume" -> sys.volume(params)
+            "system.brightness" -> sys.brightness(params)
+            "system.rotation" -> sys.rotation(params.optString("mode", ""))
+            "system.dnd" -> sys.dnd(params.optString("mode", ""))
+            "system.flashlight" -> sys.flashlight(params.optBoolean("on", true))
+            "system.wake" -> observed(params) { sys.wake() }
             "interact.scroll" -> observed(params) { inter.scroll(params) }
             "interact.key" -> observed(params) { inter.key(params) }
             "interact.setClipboard" -> inter.setClipboard(params.optString("text", ""))
@@ -63,6 +81,9 @@ class Dispatcher(private val svc: MobileAccessibilityService) {
             .put("screen", obs.screenInfo().put("density", svc.resources.displayMetrics.density))
             .put("package", obs.currentPackage()).put("activity", svc.foregroundActivity)
             .put("keyboard", obs.keyboardVisible())
+            .put("interactive", svc.getSystemService(android.os.PowerManager::class.java).isInteractive)
+            .put("locked", svc.getSystemService(android.app.KeyguardManager::class.java).isKeyguardLocked)
+            .put("permissions", SystemActions.permissions(svc))
             .put("battery", bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)).put("charging", bm.isCharging)
             .put("appVersion", BuildConfig.VERSION_NAME)
     }
@@ -82,6 +103,10 @@ class Dispatcher(private val svc: MobileAccessibilityService) {
                     "scroll" -> inter.scroll(step)
                     "swipe" -> inter.swipe(step)
                     "drag" -> inter.drag(step)
+                    "pinch" -> inter.pinch(step)
+                    "scrollUntil" -> inter.scrollUntil(step, deadline).also { if (it.has("error")) throw ActionError(it.getString("error")) }
+                    "openSettings" -> sys.openSettings(step.optString("page", ""), step.optString("package", ""))
+                    "readText" -> obs.readText(step)
                     "key" -> inter.key(step)
                     "openApp" -> apps.open(step.optString("app", ""))
                     "openUrl" -> apps.openUrl(step.optString("url", ""))
@@ -90,7 +115,7 @@ class Dispatcher(private val svc: MobileAccessibilityService) {
                     "snapshot" -> obs.snapshot(step)
                     else -> fail("BAD_ARGS", "Unknown step action '$kind'")
                 }
-                if (kind != "snapshot" && kind != "wait" && kind != "waitFor") obs.settle(since = stepStart)
+                if (kind !in setOf("snapshot", "wait", "waitFor", "readText")) obs.settle(since = stepStart)
                 results.put(r); completed++
             } catch (e: Exception) { error = "step $i ($kind): ${e.message}"; break }
         }

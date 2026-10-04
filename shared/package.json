@@ -1,6 +1,6 @@
 {
   "name": "@mobilemcp/shared",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "exports": { ".": { "types": "./src/protocol.ts", "default": "./src/protocol.ts" } }
 }

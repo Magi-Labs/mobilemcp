@@ -20,6 +20,11 @@ class Interactions(private val svc: MobileAccessibilityService, private val obs:
     fun tap(p: JSONObject): JSONObject {
         val long = p.optBoolean("longPress", false)
         val ref = p.optString("ref", "")
+        if (p.optBoolean("doubleTap", false)) {
+            val (x, y) = if (ref.isNotEmpty()) point(p, "ref", "x", "y") else point(p, "", "x", "y")
+            if (!doubleTapGesture(x, y)) fail("TAP_FAILED", "Double tap was cancelled")
+            return JSONObject().put("ok", true).put("method", "doubleTap").put("x", x).put("y", y)
+        }
         if (ref.isNotEmpty()) {
             val rec = obs.resolve(ref)
             var n: AccessibilityNodeInfo? = rec.node; var hops = 0
@@ -182,6 +187,40 @@ class Interactions(private val svc: MobileAccessibilityService, private val obs:
         fy = fy.coerceIn(1, screen.height() - 2); ty = ty.coerceIn(1, screen.height() - 2)
         if (!gestureLine(fx, fy, tx, ty, duration)) fail("SWIPE_FAILED", "Gesture cancelled")
         return "$fx,$fy" to "$tx,$ty"
+    }
+
+    private fun doubleTapGesture(x: Int, y: Int): Boolean {
+        val p1 = Path().apply { moveTo(x.toFloat(), y.toFloat()) }; val p2 = Path().apply { moveTo(x.toFloat(), y.toFloat()) }
+        return dispatch(GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(p1, 0, 50)).addStroke(GestureDescription.StrokeDescription(p2, 160, 50)).build())
+    }
+
+    /** Two fingers moving along the horizontal axis through the center: "in" = fingers converge (zoom out), "out" = diverge (zoom in). */
+    fun pinch(p: JSONObject): JSONObject {
+        val (cx, cy) = if (p.optString("ref", "").isNotEmpty()) point(p, "ref", "x", "y") else if (p.has("x") && p.has("y")) point(p, "", "x", "y") else screenRect().let { it.centerX() to it.centerY() }
+        val dist = p.optInt("distance", 300).coerceIn(50, 1500); val duration = p.optInt("duration", 400).coerceIn(100, 3000).toLong()
+        val out = p.optString("direction", "out") == "out"
+        val screen = screenRect(); val near = 40; val far = (near + dist).coerceAtMost(minOf(cx, screen.width() - cx) - 4)
+        val (a0, a1) = if (out) near to far else far to near
+        val f1 = Path().apply { moveTo((cx - a0).toFloat(), cy.toFloat()); lineTo((cx - a1).toFloat(), cy.toFloat()) }
+        val f2 = Path().apply { moveTo((cx + a0).toFloat(), cy.toFloat()); lineTo((cx + a1).toFloat(), cy.toFloat()) }
+        val ok = dispatch(GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(f1, 0, duration)).addStroke(GestureDescription.StrokeDescription(f2, 0, duration)).build())
+        if (!ok) fail("PINCH_FAILED", "Gesture cancelled")
+        return JSONObject().put("ok", true).put("direction", if (out) "out" else "in").put("center", "$cx,$cy").put("travel", far - near)
+    }
+
+    fun scrollUntil(p: JSONObject, deadline: Deadline): JSONObject {
+        val text = p.optString("text", "").trim().lowercase(); if (text.isEmpty()) fail("BAD_ARGS", "text required")
+        val maxPages = p.optInt("maxPages", 10).coerceIn(1, 50)
+        val end = minOf(System.currentTimeMillis() + p.optLong("timeout", 20_000).coerceIn(1000, 60_000), deadline.at - 500)
+        val step = JSONObject().put("direction", p.optString("direction", "down")).put("amount", 1); p.optString("ref", "").takeIf { it.isNotEmpty() }?.let { step.put("ref", it) }
+        var pages = 0
+        while (true) {
+            obs.collect().firstOrNull { it.text.lowercase().contains(text) }?.let { return JSONObject().put("found", true).put("pages", pages).put("match", obs.refFor(it)) }
+            if (pages >= maxPages || System.currentTimeMillis() > end) return JSONObject().put("found", false).put("pages", pages).put("error", "NOT_FOUND: '$text' not seen after $pages pages")
+            val r = scroll(step); pages++
+            if (r.optBoolean("atEnd", false)) { obs.settle(); obs.collect().firstOrNull { it.text.lowercase().contains(text) }?.let { return JSONObject().put("found", true).put("pages", pages).put("match", obs.refFor(it)) }; return JSONObject().put("found", false).put("pages", pages).put("error", "NOT_FOUND: reached the end after $pages pages") }
+            obs.settle()
+        }
     }
 
     private fun gestureTap(x: Int, y: Int, long: Boolean): Boolean {

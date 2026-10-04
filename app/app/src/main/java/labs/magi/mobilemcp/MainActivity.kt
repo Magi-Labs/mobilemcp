@@ -47,6 +47,8 @@ class MainActivity : AppCompatActivity() {
             if (svc.hub.enabled) svc.hub.disconnect() else svc.hub.connect()
             render()
         }
+        findViewById<Button>(R.id.notificationAccess).setOnClickListener { startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }
+        findViewById<Button>(R.id.writeSettings).setOnClickListener { startActivity(Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS, Uri.parse("package:$packageName"))) }
         findViewById<Button>(R.id.battery).setOnClickListener {
             val pm = getSystemService(PowerManager::class.java)
             if (pm.isIgnoringBatteryOptimizations(packageName)) { Toast.makeText(this, "Already allowed", Toast.LENGTH_SHORT).show(); return@setOnClickListener }
@@ -76,6 +78,8 @@ class MainActivity : AppCompatActivity() {
         val svc = MobileAccessibilityService.instance
         status.text = if (svc == null) "Accessibility service off - enable it in step 1" else Status.state
         connect.text = if (svc?.hub?.enabled == true) "2. Disconnect" else "2. Connect"
+        findViewById<Button>(R.id.notificationAccess).text = "Notification access: " + if (MobileNotificationListener.instance != null) "granted" else "optional, tap to grant"
+        findViewById<Button>(R.id.writeSettings).text = "Modify system settings: " + if (Settings.System.canWrite(this)) "granted" else "optional, tap to grant"
         log.text = Status.lines().asReversed().joinToString("\n")
     }
 }

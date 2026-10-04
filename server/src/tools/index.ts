@@ -5,10 +5,14 @@ import { registerObserveTools } from './observe.js';
 import { registerInteractTools } from './interact.js';
 import { registerAppTools } from './apps.js';
 import { registerBatchTools } from './batch.js';
+import { registerNotificationTools } from './notifications.js';
+import { registerSystemTools } from './system.js';
 export function registerAllTools(mcp: McpServer, bridge: Bridge): void {
   registerDeviceTools(mcp, bridge);
   registerObserveTools(mcp, bridge);
   registerInteractTools(mcp, bridge);
   registerAppTools(mcp, bridge);
+  registerNotificationTools(mcp, bridge);
+  registerSystemTools(mcp, bridge);
   registerBatchTools(mcp, bridge);
 }

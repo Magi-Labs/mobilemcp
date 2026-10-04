@@ -1,7 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Bridge } from '../bridge.js';
 import { z } from 'zod';
-import { observationSchema, bridgeCall, bridgeImageCall } from './helpers.js';
+import { observationSchema, refSchema, bridgeCall, bridgeImageCall } from './helpers.js';
 export function registerObserveTools(mcp: McpServer, bridge: Bridge): void {
   mcp.registerTool('get_screen_snapshot', {
     description: 'Bounded accessibility tree of the current screen: one line per node "@ref role \"text\" [states] (x,y wxh)" with foreground app, version and truncation info. Supports query, scope, interactiveOnly, paging and since-deltas. Optional screenshot image.',
@@ -14,6 +14,10 @@ export function registerObserveTools(mcp: McpServer, bridge: Bridge): void {
       quality: z.number().int().min(10).max(100).optional().describe('JPEG quality, default 70.'),
     },
   }, async args => bridgeImageCall(bridge, 'screen.screenshot', args));
+  mcp.registerTool('read_text', {
+    description: 'Full visible text under an @ref (or the whole screen without ref), untruncated and in reading order, one node per line. For articles, messages, long lists; snapshot lines cap text at 300 chars.',
+    inputSchema: { ref: refSchema.optional(), maxChars: z.number().int().min(500).max(200000).optional().describe('Default 50000.'), offset: z.number().int().nonnegative().optional() },
+  }, async args => bridgeCall(bridge, 'screen.readText', args));
   mcp.registerTool('wait_for_text', {
     description: 'Wait until text appears (or disappears with gone:true) anywhere on screen, or until an app package is in the foreground. Returns the matching node. Up to 60 seconds.',
     inputSchema: {
