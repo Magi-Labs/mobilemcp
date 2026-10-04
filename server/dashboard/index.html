@@ -125,12 +125,12 @@
     $('sessions').textContent = s.sessions; $('uptime').textContent = fmtUp(s.hub.uptimeMs);
     renderDevices(s.devices);
     $('feed').innerHTML = ''; for (const e of s.events) addEvent(e, true);
-    if (e => e.type === 'device.connected' || e.type === 'device.disconnected' || e.type === 'response') {}
   }
   function stream() {
     if (es) es.close();
     es = new EventSource('/api/events' + (token ? '?token=' + encodeURIComponent(token) : ''));
-    es.onmessage = m => { const e = JSON.parse(m.data); addEvent(e); if (e.type.startsWith('device.')) status().catch(() => {}); };
+    let refreshTimer = null;
+    es.onmessage = m => { const e = JSON.parse(m.data); addEvent(e); if (e.type.startsWith('device.')) status().catch(() => {}); else if (e.type === 'response' && !refreshTimer) refreshTimer = setTimeout(() => { refreshTimer = null; api('/api/status').then(s => renderDevices(s.devices)).catch(() => {}); }, 1500); };
   }
   async function boot() {
     try { await status(); $('auth').hidden = true; $('app').hidden = false; $('authError').hidden = true; stream(); }
