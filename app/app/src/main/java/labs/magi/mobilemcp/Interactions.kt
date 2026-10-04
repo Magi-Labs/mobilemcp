@@ -102,24 +102,31 @@ class Interactions(private val svc: MobileAccessibilityService, private val obs:
     }
 
     /**
-     * Long-press, drag, hover, release as ONE stroke. Gesture time is distributed along path length, so the hold and
-     * hover phases are encoded as tiny 2px back-and-forth segments (well inside touch slop) whose total length gives
-     * them the requested share of the duration. This avoids willContinue/continueStroke, whose pointer-up timing
-     * differs between launchers and OS versions.
+     * Long-press, drag through optional waypoints (each with a pause), hover, release as ONE stroke. Gesture time is
+     * distributed along path length, so holds and pauses are encoded as tiny 1px back-and-forth segments (well inside
+     * touch slop) whose length gives them the requested share of the duration. Avoids continueStroke, whose pointer-up
+     * timing differs between launchers. A pause at a screen edge lets launchers flip pages mid-drag.
      */
     fun drag(p: JSONObject): JSONObject {
-        val from = point(p, "fromRef", "fromX", "fromY", grab = true); val to = point(p, "toRef", "toX", "toY")
-        val hold = p.optInt("holdMs", 900).coerceIn(100, 5000); val move = p.optInt("moveMs", 300).coerceIn(100, 5000); val hover = p.optInt("hoverMs", 250).coerceIn(0, 5000)
-        val (fx, fy) = from; val (tx, ty) = to
-        val dist = Math.hypot((tx - fx).toDouble(), (ty - fy).toDouble()).coerceAtLeast(8.0)
-        val speed = dist / move  // px per ms during the move
-        val path = Path().apply { moveTo(fx.toFloat(), fy.toFloat()) }
-        jitter(path, fx, fy, speed * hold)
-        path.lineTo(tx.toFloat(), ty.toFloat())
-        jitter(path, tx, ty, speed * hover)
-        val ok = dispatch(GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(path, 0, (hold + move + hover).toLong())).build())
+        val from = point(p, "fromRef", "fromX", "fromY", grab = true)
+        val hold = p.optInt("holdMs", 900).coerceIn(100, 5000); val moveMs = p.optInt("moveMs", 300).coerceIn(100, 5000); val hover = p.optInt("hoverMs", 250).coerceIn(0, 5000)
+        // Waypoints: [{x,y|ref,pauseMs}], last one is the drop point unless toRef/toX,toY is also given.
+        val legs = ArrayList<Triple<Int, Int, Int>>()
+        p.optJSONArray("path")?.let { arr -> for (i in 0 until arr.length()) { val w = arr.getJSONObject(i); val (x, y) = point(w, "ref", "x", "y"); legs.add(Triple(x, y, w.optInt("pauseMs", 0).coerceIn(0, 10_000))) } }
+        if (p.has("toRef") || (p.has("toX") && p.has("toY"))) { val (tx, ty) = point(p, "toRef", "toX", "toY"); legs.add(Triple(tx, ty, hover)) }
+        else if (legs.isNotEmpty()) legs[legs.size - 1] = legs.last().let { Triple(it.first, it.second, it.third + hover) }
+        else fail("BAD_ARGS", "Pass toRef / toX,toY or a path of waypoints.")
+        var (cx, cy) = from; var length = 0.0
+        for ((x, y, _) in legs) { length += Math.hypot((x - cx).toDouble(), (y - cy).toDouble()); cx = x; cy = y }
+        val speed = length.coerceAtLeast(8.0) / (moveMs.toDouble() * legs.size)  // px per ms, uniform over the stroke
+        val path = Path().apply { moveTo(from.first.toFloat(), from.second.toFloat()) }
+        jitter(path, from.first, from.second, speed * hold)
+        var total = hold + moveMs * legs.size
+        for ((x, y, pause) in legs) { path.lineTo(x.toFloat(), y.toFloat()); if (pause > 0) { jitter(path, x, y, speed * pause); total += pause } }
+        val ok = dispatch(GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(path, 0, total.toLong())).build())
         if (!ok) fail("DRAG_FAILED", "Gesture was cancelled by the system")
-        return JSONObject().put("ok", true).put("from", "$fx,$fy").put("to", "$tx,$ty").put("holdMs", hold).put("moveMs", move).put("hoverMs", hover)
+        val last = legs.last()
+        return JSONObject().put("ok", true).put("from", "${from.first},${from.second}").put("to", "${last.first},${last.second}").put("waypoints", legs.size - 1).put("durationMs", total)
     }
 
     /** Appends back-and-forth 2px segments at (x,y) totalling `length` px so the sampler dwells there. */

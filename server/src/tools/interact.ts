@@ -50,6 +50,7 @@ export function registerInteractTools(mcp: McpServer, bridge: Bridge): void {
     inputSchema: {
       fromRef: refSchema.optional(), fromX: z.number().int().optional(), fromY: z.number().int().optional(),
       toRef: refSchema.optional(), toX: z.number().int().optional(), toY: z.number().int().optional(),
+      path: z.array(z.object({ ref: refSchema.optional(), x: z.number().int().optional(), y: z.number().int().optional(), pauseMs: z.number().int().min(0).max(10000).optional() })).max(10).optional().describe('Waypoints visited before the drop, each with an optional pause. Pause ~1200ms at a screen edge (x≈20 or w-20) to flip launcher pages mid-drag. If no toRef/toX is given the last waypoint is the drop point.'),
       holdMs: z.number().int().min(100).max(5000).optional().describe('Long-press duration before moving, default 900.'),
       moveMs: z.number().int().min(100).max(5000).optional().describe('Movement duration, default 300. Keep it short for launchers: slow passes trigger reorder instead of folder merge.'),
       hoverMs: z.number().int().min(0).max(5000).optional().describe('Pause over the target before releasing, default 250. Launchers merge icons into a folder on a short hover and reorder on a long one (>600ms).'),

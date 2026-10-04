@@ -4,7 +4,7 @@ import { registerAllTools } from './tools/index.js';
 
 export function createMcpServer(bridge: Bridge) {
   const mcp = new McpServer(
-    { name: 'mobilemcp', version: '0.2.0' },
+    { name: 'mobilemcp', version: '0.2.1' },
     {
       instructions: `
 Use the user's real Android phone through MobileMCP, like a person holding it.
