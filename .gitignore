@@ -1,0 +1,18 @@
+node_modules
+dist
+*.log
+.DS_Store
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+# Android
+app/.gradle
+app/build
+app/app/build
+app/local.properties
+app/.idea
+app/*.iml
+app/app/*.iml
+app/.kotlin
+*.apk.idsig

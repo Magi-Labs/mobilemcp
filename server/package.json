@@ -1,0 +1,25 @@
+{
+  "name": "mobilemcp",
+  "version": "0.1.0",
+  "description": "MCP server that lets AI use your real Android phone - screen tree, taps, typing, apps - through its accessibility service.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Deepak Silaych",
+  "repository": { "type": "git", "url": "https://github.com/Magi-Labs/mobilemcp.git", "directory": "server" },
+  "keywords": ["mcp", "android", "mobile", "accessibility", "ai", "model-context-protocol", "agent"],
+  "scripts": { "compile": "node scripts/bundle.mjs" },
+  "bin": { "mobilemcp": "./dist/index.js", "mobilemcp-hub": "./dist/hub.js" },
+  "files": ["dist", "README.md"],
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "ws": "^8.18.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@mobilemcp/shared": "*",
+    "@types/node": "^22.13.5",
+    "@types/ws": "^8.5.14",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.7.3"
+  }
+}

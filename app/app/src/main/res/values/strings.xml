@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">MobileMCP</string>
+    <string name="a11y_description">Lets AI agents you connect read the screen and act on it (tap, type, scroll, open apps) through the MobileMCP hub you configure. Nothing runs until you tap Connect.</string>
+</resources>
