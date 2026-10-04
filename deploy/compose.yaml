@@ -1,0 +1,13 @@
+services:
+  mobilemcp-hub:
+    build:
+      context: .
+      args:
+        TARBALL: ${MOBILEMCP_TARBALL:-mobilemcp-0.1.0.tgz}
+    container_name: mobilemcp-hub
+    restart: unless-stopped
+    ports:
+      - "17692:17692"
+    environment:
+      MOBILEMCP_PUBLIC_URL: ${MOBILEMCP_PUBLIC_URL}
+      MOBILEMCP_TOKEN: ${MOBILEMCP_TOKEN}
