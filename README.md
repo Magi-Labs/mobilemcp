@@ -85,7 +85,7 @@ Register the MCP server with your agent:
 }
 ```
 
-For Claude Code, `plugin/` is a ready plugin (MCP server + a skill describing the workflow).
+For Claude Code, `plugin/` is a ready plugin: a self-contained server bundle (`plugin/bin/mobilemcp.js`, no npm needed) plus a skill describing the workflow. Add it with `claude plugin add ./plugin` or point your marketplace at the directory.
 
 ### Emulator
 

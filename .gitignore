@@ -1,5 +1,6 @@
 node_modules
 dist
+!plugin/bin
 *.log
 .DS_Store
 *.tsbuildinfo

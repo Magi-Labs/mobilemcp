@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "mobilemcp": {
-      "command": "npx",
-      "args": ["-y", "mobilemcp"]
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/bin/mobilemcp.js"]
     }
   }
 }
