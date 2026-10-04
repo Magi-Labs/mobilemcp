@@ -10,7 +10,7 @@ The shared source is the private Magi Labs standards repository referenced in [A
 
 | Area | Evidence / alignment |
 | --- | --- |
-| Repository identity | Public under Magi-Labs, `main`, concrete description, technology/product topics; homepage points at the README until a product page exists |
+| Repository identity | Public under Magi-Labs, `main`, concrete description, technology/product topics; homepage is the product page https://magi-labs.github.io/mobilemcp/ (one Pico CSS page in the organization website repository) |
 | Shared labels | All 10 catalog names, colors and descriptions present; area labels `area:app`, `area:hub`, `area:tools`, `area:launcher` documented in CONTRIBUTING.md; no issues existed, so renaming the earlier custom labels needed no migration |
 | Contribution workflow | CONTRIBUTING.md (layout, commands, change expectations, labels), PR template in `.github/` |
 | Agent instructions | AGENTS.md with reviewed revision, invariants, commands, verification policy, UI/dependency rules and the one exception |

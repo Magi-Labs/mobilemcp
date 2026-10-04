@@ -1,6 +1,6 @@
 <h1 align="center">MobileMCP</h1>
 
-<p align="center">Let AI agents use your real Android phone the way you do: read the screen, tap, type, scroll, open apps.</p>
+<p align="center">Let AI agents use your real Android phone the way you do: read the screen, tap, type, scroll, open apps.<br><a href="https://magi-labs.github.io/mobilemcp/">magi-labs.github.io/mobilemcp</a></p>
 
 Companion: [LiveMCP](https://github.com/Magi-Labs/livemcp) does the same for Chrome; MobileMCP is its mobile sibling and shares the hub/bridge design.
 
