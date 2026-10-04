@@ -26,6 +26,7 @@ class Dispatcher(private val svc: MobileAccessibilityService) {
             "interact.swipe" -> observed(params) { inter.swipe(params) }
             "interact.drag" -> observed(params) { inter.drag(params) }
             "interact.pinch" -> observed(params) { inter.pinch(params) }
+            "interact.gesture" -> observed(params) { inter.gesture(params) }
             "interact.scrollUntil" -> observed(params) { inter.scrollUntil(params, deadline).also { if (it.has("error")) throw ActionError(it.getString("error")) } }
             "screen.readText" -> obs.readText(params)
             "apps.uninstall" -> observed(params, launch = true) { sys.uninstall(params.optString("package", "")) }
@@ -105,6 +106,7 @@ class Dispatcher(private val svc: MobileAccessibilityService) {
                     "swipe" -> inter.swipe(step)
                     "drag" -> inter.drag(step)
                     "pinch" -> inter.pinch(step)
+                    "gesture" -> inter.gesture(step)
                     "scrollUntil" -> inter.scrollUntil(step, deadline).also { if (it.has("error")) throw ActionError(it.getString("error")) }
                     "openSettings" -> sys.openSettings(step.optString("page", ""), step.optString("package", ""))
                     "readText" -> obs.readText(step)

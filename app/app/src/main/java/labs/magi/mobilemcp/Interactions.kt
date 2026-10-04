@@ -129,6 +129,47 @@ class Interactions(private val svc: MobileAccessibilityService, private val obs:
         return JSONObject().put("ok", true).put("from", "${from.first},${from.second}").put("to", "${last.first},${last.second}").put("waypoints", legs.size - 1).put("durationMs", total)
     }
 
+    /**
+     * Generic touch sequence: steps of down(x,y) / move(x,y,ms) / wait(ms) / up, compiled into one stroke per finger
+     * (fingers run concurrently, keyed by `finger`). Waits are 1px dwell jitter so the pointer stays down.
+     */
+    fun gesture(p: JSONObject): JSONObject {
+        val steps = p.optJSONArray("steps") ?: fail("BAD_ARGS", "steps[] required")
+        class Finger { var x = 0; var y = 0; var down = false; val path = Path(); var length = 0.0; var moveMs = 0; var waitMs = 0; val waits = ArrayList<Triple<Int, Int, Int>>(); val legs = ArrayList<Triple<Int, Int, Int>>() }
+        // First pass: collect per-finger legs (move) and dwells (wait) in order; second pass builds paths with a uniform speed.
+        data class Op(val kind: String, val x: Int, val y: Int, val ms: Int)
+        val ops = HashMap<Int, ArrayList<Op>>()
+        for (i in 0 until steps.length()) {
+            val st = steps.getJSONObject(i); val f = st.optInt("finger", 0)
+            val (x, y) = if (st.has("ref")) point(st, "ref", "x", "y") else (st.optInt("x", -1) to st.optInt("y", -1))
+            ops.getOrPut(f) { ArrayList() }.add(Op(st.optString("type", st.optString("action", "")), x, y, st.optInt("ms", 0)))
+        }
+        val builder = GestureDescription.Builder(); var longest = 0L
+        for ((finger, list) in ops) {
+            var cx = -1; var cy = -1; var length = 0.0; var moveTotal = 0; var waitTotal = 0; var started = false
+            for (op in list) when (op.kind) {
+                "down" -> { if (op.x < 0) fail("BAD_ARGS", "down needs x,y or ref"); cx = op.x; cy = op.y; started = true }
+                "move" -> { if (!started) fail("BAD_ARGS", "move before down (finger $finger)"); if (op.x < 0) fail("BAD_ARGS", "move needs x,y or ref"); length += Math.hypot((op.x - cx).toDouble(), (op.y - cy).toDouble()); moveTotal += op.ms.coerceAtLeast(50); cx = op.x; cy = op.y }
+                "wait" -> { if (!started) fail("BAD_ARGS", "wait before down (finger $finger)"); waitTotal += op.ms.coerceIn(0, 10_000) }
+                "up" -> {}
+                else -> fail("BAD_ARGS", "Unknown step type '${op.kind}' (down|move|wait|up)")
+            }
+            if (!started) fail("BAD_ARGS", "finger $finger has no down step")
+            val speed = length.coerceAtLeast(8.0) / moveTotal.coerceAtLeast(50)
+            val path = Path(); var px = -1; var py = -1
+            for (op in list) when (op.kind) {
+                "down" -> { path.moveTo(op.x.toFloat(), op.y.toFloat()); px = op.x; py = op.y }
+                "move" -> { path.lineTo(op.x.toFloat(), op.y.toFloat()); px = op.x; py = op.y }
+                "wait" -> jitter(path, px, py, speed * op.ms.coerceIn(0, 10_000))
+            }
+            if (length == 0.0 && waitTotal > 0) { path.lineTo(px.toFloat(), py.toFloat()) }
+            val duration = (moveTotal + waitTotal).coerceAtLeast(40).toLong(); longest = maxOf(longest, duration)
+            builder.addStroke(GestureDescription.StrokeDescription(path, 0, duration))
+        }
+        if (!dispatch(builder.build())) fail("GESTURE_FAILED", "Gesture was cancelled by the system")
+        return JSONObject().put("ok", true).put("fingers", ops.size).put("durationMs", longest)
+    }
+
     /** Appends back-and-forth 2px segments at (x,y) totalling `length` px so the sampler dwells there. */
     private fun jitter(path: Path, x: Int, y: Int, length: Double) {
         var remaining = length; var flip = false

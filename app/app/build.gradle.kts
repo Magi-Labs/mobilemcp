@@ -11,8 +11,8 @@ android {
         applicationId = "labs.magi.mobilemcp"
         minSdk = 30
         targetSdk = 35
-        versionCode = 4
-        versionName = "0.2.1"
+        versionCode = 5
+        versionName = "0.2.2"
         // Prefilled hub URL for personal builds: ./gradlew -PdefaultHubUrl=wss://hub.example.com assembleRelease
         buildConfigField("String", "DEFAULT_HUB_URL", "\"${project.findProperty("defaultHubUrl") ?: ""}\"")
     }

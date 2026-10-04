@@ -14,6 +14,7 @@ const step = z.discriminatedUnion('action', [
   z.object({ action: z.literal('scroll'), direction: z.enum(['down', 'up', 'left', 'right']), ref: refSchema.optional(), amount: z.number().int().min(1).max(10).optional() }),
   z.object({ action: z.literal('swipe'), direction: z.enum(['up', 'down', 'left', 'right']).optional(), ref: refSchema.optional(), distance: z.number().int().optional(), fromX: z.number().int().optional(), fromY: z.number().int().optional(), toX: z.number().int().optional(), toY: z.number().int().optional(), duration: z.number().int().optional() }),
   z.object({ action: z.literal('drag'), fromRef: refSchema.optional(), fromX: z.number().int().optional(), fromY: z.number().int().optional(), toRef: refSchema.optional(), toX: z.number().int().optional(), toY: z.number().int().optional(), path: z.array(z.object({ ref: refSchema.optional(), x: z.number().int().optional(), y: z.number().int().optional(), pauseMs: z.number().int().optional() })).max(10).optional(), holdMs: z.number().int().optional(), moveMs: z.number().int().optional(), hoverMs: z.number().int().optional() }),
+  z.object({ action: z.literal('gesture'), steps: z.array(z.object({ type: z.enum(['down', 'move', 'wait', 'up']), x: z.number().int().optional(), y: z.number().int().optional(), ref: refSchema.optional(), ms: z.number().int().optional(), finger: z.number().int().optional() })).min(2).max(40) }),
   z.object({ action: z.literal('key'), key: z.enum(KEYS) }),
   z.object({ action: z.literal('openApp'), app: z.string().min(1).max(200) }),
   z.object({ action: z.literal('openUrl'), url: z.string().min(1).max(4000) }),
@@ -23,7 +24,7 @@ const step = z.discriminatedUnion('action', [
 ]);
 export function registerBatchTools(mcp: McpServer, bridge: Bridge): void {
   mcp.registerTool('run_mobile_actions', {
-    description: 'Run 1-20 known steps sequentially on the phone in one call (tap, type, scroll, swipe, drag, pinch, scrollUntil, key, openApp, openUrl, openSettings, wait, waitFor, snapshot, readText). Stops on the first error and reports completed steps; no rollback. One observation is returned at the end unless observe:false. Refs resolved per step.',
+    description: 'Run 1-20 known steps sequentially on the phone in one call (tap, type, scroll, swipe, drag, gesture, pinch, scrollUntil, key, openApp, openUrl, openSettings, wait, waitFor, snapshot, readText). Stops on the first error and reports completed steps; no rollback. One observation is returned at the end unless observe:false. Refs resolved per step.',
     inputSchema: {
       steps: z.array(step).min(1).max(20),
       timeout: z.number().int().min(1000).max(60000).optional().describe('Total budget in ms, default 60000.'),

@@ -65,6 +65,13 @@ export function registerInteractTools(mcp: McpServer, bridge: Bridge): void {
     description: 'Scroll a list (ref or main scrollable) page by page until text appears on screen, then return its @ref. Up to maxPages (default 10) within timeout.',
     inputSchema: { text: z.string().min(1).max(300), ref: refSchema.optional(), direction: z.enum(['down', 'up', 'left', 'right']).optional(), maxPages: z.number().int().min(1).max(50).optional(), timeout: z.number().int().min(1000).max(60000).optional(), ...actionObservationSchema },
   }, async args => bridgeCall(bridge, 'interact.scrollUntil', args));
+  mcp.registerTool('gesture', {
+    description: 'Custom touch sequence compiled into one continuous touch: steps of down (x,y|ref), wait (ms), move (x,y|ref over ms), up. Example long-press-drag with a page flip: [{type:"down",ref:"@4"},{type:"wait",ms:900},{type:"move",x:15,y:1200,ms:300},{type:"wait",ms:1300},{type:"move",x:288,y:462,ms:300},{type:"wait",ms:250},{type:"up"}]. Add finger:1 on steps for a second concurrent finger (pinch, two-finger swipe).',
+    inputSchema: {
+      steps: z.array(z.object({ type: z.enum(['down', 'move', 'wait', 'up']), x: z.number().int().optional(), y: z.number().int().optional(), ref: refSchema.optional(), ms: z.number().int().min(0).max(10000).optional(), finger: z.number().int().min(0).max(4).optional() })).min(2).max(40),
+      ...actionObservationSchema,
+    },
+  }, async args => bridgeCall(bridge, 'interact.gesture', args));
   mcp.registerTool('press_key', {
     description: 'System keys: back, home, recents, notifications, quick_settings, power (dialog), lock, dismiss_notifications, enter (keyboard action on the focused field).',
     inputSchema: { key: z.enum(KEYS), ...actionObservationSchema },
