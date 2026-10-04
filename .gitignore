@@ -16,3 +16,6 @@ app/*.iml
 app/app/*.iml
 app/.kotlin
 *.apk.idsig
+__pycache__/
+*.pyc
+[\[]*
