@@ -23,13 +23,13 @@ agent (Claude Code, Codex, …) ──stdio──▶ mobilemcp ──IPC──�
 
 The accessibility route is what "use my phone like a normal user" means. ADB-level control could be added later as a second driver for emulators and development.
 
-## Tools (34)
+## Tools (35)
 
 | Group | Tools |
 | --- | --- |
 | Devices | `list_devices`, `select_device`, `get_device_info` (model, screen, battery, lock state, granted permissions, visible windows) |
 | Observe | `get_screen_snapshot` (bounded tree with persistent `@refs`; `query`, `scope`, `interactiveOnly`, paging, `since` deltas, optional image), `take_screenshot`, `read_text` (full text, untruncated), `wait_for_text` |
-| Act | `tap` (node action or real touch; long press, double tap), `type_text`, `scroll`, `scroll_until`, `swipe`, `drag` (long-press + move: rearrange, launcher folders, sliders), `pinch`, `press_key`, `set_clipboard` |
+| Act | `tap` (node action or real touch; long press, double tap), `type_text`, `scroll`, `scroll_until`, `swipe`, `drag` (long-press + move, optional waypoints with pauses for cross-page drags), `gesture` (composable `down`/`wait`/`move`/`up` steps, multi-finger: any touch sequence), `pinch`, `press_key`, `set_clipboard` |
 | Apps | `list_apps`, `open_app`, `open_url`, `uninstall_app`, `open_settings` (30 Settings pages and quick panels), `start_intent` (any intent: dial, SMS, share, deep links) |
 | Notifications | `get_notifications`, `open_notification`, `notification_action` (incl. direct reply), `dismiss_notification` — needs notification access |
 | System | `media_control`, `set_volume`, `set_brightness`, `set_rotation` (need "Modify system settings"), `set_dnd`, `set_flashlight`, `wake_screen` |
@@ -39,15 +39,15 @@ Every action returns a compact observation after the UI settles (or `observe:fal
 
 ## Quick install — published release
 
-Download **mobilemcp-0.2.0.apk**, **mobilemcp-0.2.0.tgz** and **SHA256SUMS** from [v0.2.0](https://github.com/Magi-Labs/mobilemcp/releases/tag/v0.2.0) into one directory.
+Download **mobilemcp-0.2.2.apk**, **mobilemcp-0.2.2.tgz** and **SHA256SUMS** from [v0.2.2](https://github.com/Magi-Labs/mobilemcp/releases/tag/v0.2.2) into one directory.
 
 ```sh
 shasum -a 256 -c SHA256SUMS          # Linux: sha256sum -c SHA256SUMS
-npm install --prefix ./mobilemcp-local ./mobilemcp-0.2.0.tgz
+npm install --prefix ./mobilemcp-local ./mobilemcp-0.2.2.tgz
 ./mobilemcp-local/node_modules/.bin/mobilemcp-hub
 ```
 
-Install the APK on the phone (`adb install mobilemcp-0.2.0.apk` or copy it over), then follow the app steps below and point your MCP client at `./mobilemcp-local/node_modules/mobilemcp/dist/index.js`.
+Install the APK on the phone (`adb install mobilemcp-0.2.2.apk` or copy it over), then follow the app steps below and point your MCP client at `./mobilemcp-local/node_modules/mobilemcp/dist/index.js`.
 
 ## Quick start — from source
 
@@ -67,7 +67,7 @@ cd app && ./gradlew :app:assembleDebug   # app/app/build/outputs/apk/debug/app-d
 
 Install the APK on the phone, then in the app:
 
-0. **Google Play Protect** blocks accessibility apps installed from chat apps or browsers in some countries (India, Singapore, Thailand, Brazil, …) with no override. Install over adb (`adb install mobilemcp-0.2.0.apk`) or pause *Play Store → Play Protect → Scan apps* while installing from the Files app, then re-enable it.
+0. **Google Play Protect** blocks accessibility apps installed from chat apps or browsers in some countries (India, Singapore, Thailand, Brazil, …) with no override. Install over adb (`adb install mobilemcp-0.2.2.apk`) or pause *Play Store → Play Protect → Scan apps* while installing from the Files app, then re-enable it.
 1. **Enable accessibility service** — Android 13+ first requires *App info → ⋮ → Allow restricted settings* for sideloaded apps (the app has an *App info* button).
 2. Enter the hub URL (`ws://<your-computer-ip>:17692` on the same Wi‑Fi, or your hosted `wss://` origin) and a device name, then **Connect**.
 3. Optionally **Allow background** so Doze does not throttle the connection; grant **Notification access** for the notification tools and DND, and **Modify system settings** for brightness/rotation.
@@ -127,7 +127,8 @@ Screen content is untrusted data. The server instructions tell agents to enter c
 - Android 11+ (API 30) for accessibility screenshots and `ACTION_IME_ENTER`.
 - Apps with `FLAG_SECURE` (banking, DRM video) expose neither nodes nor pixels.
 - Custom-drawn views without accessibility nodes need `take_screenshot` plus coordinate taps. A few system pages expose no tree at all (snapshots then report `noTree: true` with the window title).
-- Launcher folder creation by `drag` depends on the launcher's drop rules; the defaults (900 ms hold, 300 ms move, 250 ms hover) merge icons on Launcher3/Pixel. Long hovers trigger reorder instead.
+- Launcher folder creation by `drag` depends on the launcher's drop rules; the defaults (900 ms hold, 300 ms move, 250 ms hover) merge icons on Launcher3/Pixel. Long hovers trigger reorder instead. Cross-page drags: add a waypoint at the screen edge with `pauseMs` ≈ 800 per page flip (hold times above ~1.2 s flip twice on OxygenOS).
+- Phones can self-update from their hub: `GET /app.apk?token=<device token>` (see HOSTING.md); a running MobileMCP can drive the download and installer itself.
 - No arbitrary key codes, shell or app installation; that is ADB territory.
 - Google Play would require a declaration for this accessibility usage; the app is distributed as a sideloaded APK.
 
