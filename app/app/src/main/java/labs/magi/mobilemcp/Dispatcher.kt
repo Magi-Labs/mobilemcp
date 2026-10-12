@@ -20,6 +20,8 @@ class Dispatcher(private val svc: MobileAccessibilityService) {
             fail("BACKGROUND_ONLY", "This action uses the screen. Turn off Background only in the phone app to allow it.")
         }
         return when (action) {
+            "shell.status" -> PrivilegedCommands.status(svc)
+            "shell.run" -> PrivilegedCommands.run(svc, params)
             "device.status" -> status()
             "device.executionPolicy" -> JSONObject()
                 .put("backgroundOnly", Prefs.backgroundOnly(svc))

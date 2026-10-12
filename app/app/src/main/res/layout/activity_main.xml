@@ -30,6 +30,9 @@
         <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:textSize="13sp"
             android:text="Allows app lists, notification reads and dismissal, and system controls. Blocks screen reads, taps, typing, app launches and notification actions. Turn off to allow screen automation." />
 
+        <CheckBox android:id="@+id/commandsAllowed" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Allow privileged commands via Shizuku" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:textSize="13sp" android:text="Off by default. Grants connected agents shell-level command access, including package and system changes. Commands can change your screen or data even in Background only mode. Start Shizuku, grant access below, then enable this switch. Turning it off stops the command service; completed changes remain." />
+        <Button android:id="@+id/shizukuPermission" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Grant Shizuku access" />
         <CheckBox android:id="@+id/otpAllowed" android:layout_width="match_parent" android:layout_height="wrap_content"
             android:text="Allow OTP reading for authorized tasks" />
         <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:textSize="13sp"

@@ -13341,6 +13341,8 @@ import { randomUUID } from "node:crypto";
 // ../shared/src/protocol.ts
 var clamp = (v, lo, hi, dflt) => Math.min(hi, Math.max(lo, Number(v ?? dflt) || dflt));
 function executionBudget(action, params) {
+  if (action === "shell.run") return clamp(params.timeout, 1e3, 3e4, 1e4) + 7e3;
+  if (action === "shell.status") return 5e3;
   if (action === "device.status" || action === "device.executionPolicy") return 5e3;
   if (action === "device.batch") return clamp(params.timeout, 1e3, 6e4, 6e4);
   if (action === "screen.waitFor") return clamp(params.timeout, 1e3, 6e4, 1e4) + 2e3;
@@ -21662,6 +21664,12 @@ async function bridgeImageCall(bridge, action, params = {}) {
   }
 }
 
+// src/tools/shell.ts
+function registerShellTools(mcp, bridge) {
+  mcp.registerTool("get_command_access", { description: "Read phone-owned privileged command toggle and Shizuku availability. Agents cannot enable permission.", inputSchema: {} }, async () => bridgeCall(bridge, "shell.status", {}));
+  mcp.registerTool("run_phone_command", { description: "Execute argv directly with Shizuku shell/root privileges, without opening an app. Requires phone toggle and Shizuku grant. No implicit shell; use sh -c only intentionally. Can modify apps/system/data or display even in Background only. Only execute user-authorized work. Timeout/disconnection means unknown effects; never automatically replay a mutation. Output is bounded to 64 KiB; no output stored by the hub.", inputSchema: { argv: external_exports.array(external_exports.string().max(4096)).min(1).max(64), timeout: external_exports.number().int().min(1e3).max(3e4).optional() } }, async (args) => bridgeCall(bridge, "shell.run", args));
+}
+
 // src/tools/devices.ts
 function registerDeviceTools(mcp, bridge) {
   mcp.registerTool("list_devices", {
@@ -21954,6 +21962,7 @@ function registerNotificationTools(mcp, bridge) {
 
 // src/tools/index.ts
 function registerAllTools(mcp, bridge) {
+  registerShellTools(mcp, bridge);
   registerDeviceTools(mcp, bridge);
   registerObserveTools(mcp, bridge);
   registerInteractTools(mcp, bridge);

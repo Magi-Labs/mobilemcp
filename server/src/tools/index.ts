@@ -1,5 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Bridge } from '../bridge.js';
+import { registerShellTools } from './shell.js';
 import { registerDeviceTools } from './devices.js';
 import { registerObserveTools } from './observe.js';
 import { registerInteractTools } from './interact.js';
@@ -8,6 +9,7 @@ import { registerBatchTools } from './batch.js';
 import { registerNotificationTools } from './notifications.js';
 import { registerSystemTools } from './system.js';
 export function registerAllTools(mcp: McpServer, bridge: Bridge): void {
+  registerShellTools(mcp, bridge);
   registerDeviceTools(mcp, bridge);
   registerObserveTools(mcp, bridge);
   registerInteractTools(mcp, bridge);

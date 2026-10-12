@@ -2,6 +2,8 @@ export const DEFAULT_WS_PORT = 17692;
 
 /** Actions the Android app executes. The hub forwards them verbatim; the server exposes tools on top. */
 export const BRIDGE_ACTIONS = [
+  'shell.status',
+  'shell.run',
   'device.info',
   'device.status',
   'device.executionPolicy',
@@ -54,6 +56,8 @@ const clamp = (v: unknown, lo: number, hi: number, dflt: number) => Math.min(hi,
 
 /** Execution budget per action in ms. The app receives `__deadline` and stops polling/waiting at it. */
 export function executionBudget(action: string, params: Record<string, any>): number {
+  if (action === 'shell.run') return clamp(params.timeout, 1000, 30000, 10000) + 7000;
+  if (action === 'shell.status') return 5000;
   if (action === 'device.status' || action === 'device.executionPolicy') return 5000;
   if (action === 'device.batch') return clamp(params.timeout, 1000, 60000, 60000);
   if (action === 'screen.waitFor') return clamp(params.timeout, 1000, 60000, 10000) + 2000;

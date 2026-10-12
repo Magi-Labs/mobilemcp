@@ -30,6 +30,19 @@ class MainActivity : AppCompatActivity() {
         autoConnect = findViewById(R.id.autoConnect); connect = findViewById(R.id.connect)
 
         hubUrl.setText(Prefs.hubUrl(this).ifEmpty { BuildConfig.DEFAULT_HUB_URL }); deviceName.setText(Prefs.name(this)); token.setText(Prefs.token(this)); autoConnect.isChecked = Prefs.autoConnect(this)
+        findViewById<CheckBox>(R.id.commandsAllowed).apply {
+            isChecked = Prefs.commandsAllowed(this@MainActivity)
+            setOnCheckedChangeListener { _, checked ->
+                Prefs.setCommandsAllowed(this@MainActivity, checked)
+                if (!checked) PrivilegedCommands.disconnect(this@MainActivity)
+            }
+        }
+        findViewById<Button>(R.id.shizukuPermission).setOnClickListener {
+            try {
+                if (!rikka.shizuku.Shizuku.pingBinder()) Toast.makeText(this, "Start Shizuku first using its Wireless debugging setup", Toast.LENGTH_LONG).show()
+                else rikka.shizuku.Shizuku.requestPermission(701)
+            } catch (_: Exception) { Toast.makeText(this, "Shizuku is unavailable", Toast.LENGTH_LONG).show() }
+        }
         findViewById<CheckBox>(R.id.otpAllowed).apply {
             isChecked = Prefs.otpAllowed(this@MainActivity)
             setOnCheckedChangeListener { _, checked -> Prefs.setOtpAllowed(this@MainActivity, checked) }

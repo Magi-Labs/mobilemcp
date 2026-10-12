@@ -8,6 +8,7 @@
 | zod | ^3.24 | MIT | Tool schemas |
 | esbuild | ^0.25 | MIT | Bundling (dev) |
 | TypeScript | ^5.7 | Apache-2.0 | Type checking (dev) |
+| Shizuku API / provider | 13.1.5 | MIT (https://github.com/RikkaApps/Shizuku-API/blob/master/LICENSE) | Privileged UserService and permission integration |
 | OkHttp | 4.12.0 | Apache-2.0 | App WebSocket client |
 | AndroidX AppCompat / Core | 1.7.0 / 1.13.1 | Apache-2.0 | App UI |
 | Kotlin, Android Gradle Plugin | 2.0.21 / 8.7.3 | Apache-2.0 | App build |

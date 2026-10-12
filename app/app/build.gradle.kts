@@ -11,8 +11,8 @@ android {
         applicationId = "labs.magi.mobilemcp"
         minSdk = 30
         targetSdk = 35
-        versionCode = 7
-        versionName = "0.5.0"
+        versionCode = 8
+        versionName = "0.6.0"
         // Prefilled hub URL for personal builds: ./gradlew -PdefaultHubUrl=wss://hub.example.com assembleRelease
         buildConfigField("String", "DEFAULT_HUB_URL", "\"${project.findProperty("defaultHubUrl") ?: ""}\"")
     }
@@ -24,13 +24,15 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
-    buildFeatures { buildConfig = true }
+    buildFeatures { buildConfig = true; aidl = true }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
     lint { abortOnError = false }
 }
 
 dependencies {
+    implementation("dev.rikka.shizuku:api:13.1.5")
+    implementation("dev.rikka.shizuku:provider:13.1.5")
     testImplementation("junit:junit:4.13.2")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.core:core-ktx:1.13.1")

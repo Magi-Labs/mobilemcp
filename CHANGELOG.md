@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.0] – 2026-10-12
+
+- Shizuku UserService integration with a phone-owned privileged-command switch (off by default) and local permission request button.
+- Command access status and direct argv execution tools, plus CLI and local agent adapter support. Bounded output/timeouts, no automatic replay and no command job persistence.
+- Commands can change system/data/display even in Background only mode; shell privileges depend on the Shizuku backend.
+- Eight JVM tests, thirteen Python tests, stdio fixtures and APK builds pass. On-phone Shizuku permission/binder verification remains pending because no phone is connected.
+
+
 ## [0.5.0] – 2026-10-12
 
 - Phone-owned Background only mode, command wake protection and separate background read queue.

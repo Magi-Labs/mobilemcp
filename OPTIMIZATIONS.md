@@ -62,3 +62,7 @@ Eight extractor/gate tests cover accepted fresh codes, disabled and expired perm
 ### v0.5.0 phone OTP toggle
 
 OTP is off by default on Android. Dedicated permission queries use the existing notifications.list bridge with otpPermission:true and return only otpAllowed. Tagged OTP notification reads enforce the toggle in the Android dispatcher. The local broker checks the toggle for both email and notification sources and fails closed on absent support or disconnection. Thirteen Python tests, queue invariant checks, three Android execution-policy tests, stdio OTP fixtures, server typecheck/build and release builds passed. No connected USB device was available for this release; on-device toggle interaction remains unverified.
+
+### Shizuku command tools
+
+Two new bridge actions have matching Android handlers, MCP tools and budgets. Status is a background read; command execution remains serialized with mutations. Five pure-JVM command-runner tests exercise argv literal semantics, nonzero exit/stderr, deadline behavior, invalid argv and 64-KiB output bounds. Existing policy tests include status and ensure execution never enters the read queue. Binder and permission verification remains pending on a real phone. No command throughput or battery improvement is claimed.

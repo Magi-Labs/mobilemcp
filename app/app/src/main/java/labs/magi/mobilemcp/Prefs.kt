@@ -12,6 +12,9 @@ object Prefs {
     fun token(ctx: Context): String = p(ctx).getString("token", "") ?: ""
     fun autoConnect(ctx: Context): Boolean = p(ctx).getBoolean("autoConnect", true)
 
+    fun commandsAllowed(ctx: Context): Boolean = p(ctx).getBoolean("commandsAllowed", false)
+    fun setCommandsAllowed(ctx: Context, value: Boolean) { p(ctx).edit().putBoolean("commandsAllowed", value).apply() }
+
     fun otpAllowed(ctx: Context): Boolean = p(ctx).getBoolean("otpAllowed", false)
     fun setOtpAllowed(ctx: Context, value: Boolean) { p(ctx).edit().putBoolean("otpAllowed", value).apply() }
 

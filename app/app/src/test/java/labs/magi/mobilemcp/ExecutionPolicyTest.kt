@@ -14,7 +14,9 @@ class ExecutionPolicyTest {
         assertTrue(ExecutionPolicy.allowed("device.batch", false))
     }
     @Test fun independentReadQueueContainsNoScreenReadsOrMutations() {
-        assertEquals(setOf("device.status", "device.executionPolicy", "apps.list", "notifications.list"), ExecutionPolicy.readActions)
+        assertEquals(setOf("shell.status", "device.status", "device.executionPolicy", "apps.list", "notifications.list"), ExecutionPolicy.readActions)
+        assertFalse(ExecutionPolicy.readActions.contains("shell.run"))
+        assertTrue(ExecutionPolicy.allowed("shell.run", true))
         assertTrue(ExecutionPolicy.backgroundActions.containsAll(ExecutionPolicy.readActions))
     }
 }
