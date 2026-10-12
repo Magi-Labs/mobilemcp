@@ -3,6 +3,7 @@ import type { Bridge } from '../bridge.js';
 import { z } from 'zod';
 import { actionObservationSchema, bridgeCall } from './helpers.js';
 export function registerNotificationTools(mcp: McpServer, bridge: Bridge): void {
+  mcp.registerTool('get_otp_permission', { description: 'Read the phone-owned OTP toggle without reading notifications. Agents cannot change it. Missing otpAllowed means an older app must be updated.', inputSchema: {} }, async () => bridgeCall(bridge, 'notifications.list', { otpPermission: true }));
   mcp.registerTool('get_notifications', {
     description: 'Active notifications (newest first): key, app, title, text, time, ongoing flag and available actions (with whether an action accepts a reply). Needs notification access granted in the app. Filter by package or text.',
     inputSchema: { package: z.string().max(200).optional(), query: z.string().max(200).optional(), limit: z.number().int().min(1).max(100).optional().describe('Default 30.'), includeOngoing: z.boolean().optional().describe('Include persistent/ongoing notifications; default false.') },

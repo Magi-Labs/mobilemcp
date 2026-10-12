@@ -12,6 +12,12 @@ object Prefs {
     fun token(ctx: Context): String = p(ctx).getString("token", "") ?: ""
     fun autoConnect(ctx: Context): Boolean = p(ctx).getBoolean("autoConnect", true)
 
+    fun otpAllowed(ctx: Context): Boolean = p(ctx).getBoolean("otpAllowed", false)
+    fun setOtpAllowed(ctx: Context, value: Boolean) { p(ctx).edit().putBoolean("otpAllowed", value).apply() }
+
+    fun backgroundOnly(ctx: Context): Boolean = p(ctx).getBoolean("backgroundOnly", false)
+    fun setBackgroundOnly(ctx: Context, value: Boolean) { p(ctx).edit().putBoolean("backgroundOnly", value).apply() }
+
     /** Stable per-install identity sent in the hello; the hub keys reconnects on it. */
     fun deviceId(ctx: Context): String {
         val existing = p(ctx).getString("deviceId", null)

@@ -3,6 +3,10 @@ import type { Bridge } from '../bridge.js';
 import { z } from 'zod';
 import { actionObservationSchema, bridgeCall } from './helpers.js';
 export function registerAppTools(mcp: McpServer, bridge: Bridge): void {
+  mcp.registerTool('get_app_context', {
+    description: 'Versioned Android app metadata and shortcut candidates. Refreshed on installs/updates/removal and reconciliation. Exported components are unverified candidates, not usable APIs. Does not launch or explore apps.',
+    inputSchema: { query: z.string().max(200).optional(), limit: z.number().int().min(1).max(500).optional() },
+  }, async args => bridgeCall(bridge, 'apps.list', { ...args, context: true }));
   mcp.registerTool('list_apps', {
     description: 'Installed launchable apps as {package,label}. Filter with query.',
     inputSchema: { query: z.string().max(100).optional(), limit: z.number().int().min(1).max(500).optional().describe('Default 100.') },

@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.5.0] – 2026-10-12
+
+- Phone-owned Background only mode, command wake protection and separate background read queue.
+- Version-aware app metadata registry refreshed on installs/updates, with guarded CLI shortcuts; app route learning is deferred.
+- Durable local read-only jobs and standalone agent MCP adapter.
+- Allow OTP reading toggle (off by default), checked by notification and email OTP tools alongside scoped owner permission. Revocation, freshness and ambiguity tests.
+- Release APKs use the current local debug signing key. Its certificate differs from the previous release; the main-package APK cannot update prior signed installs. A separate Preview APK updates the preview channel without replacing the original app. No credentials or private hub defaults are embedded.
+
+
 ## [0.4.0] – 2026-10-05 (server only; app stays 0.3.0)
 
 - Hub dashboard at `/`: connected devices, live activity feed (action names, timings, error codes), per-device live view (screenshot with optional @ref marks, click-to-tap, keys, type/tap by text, snapshot tree). One self-contained Pico CSS page served by the hub.

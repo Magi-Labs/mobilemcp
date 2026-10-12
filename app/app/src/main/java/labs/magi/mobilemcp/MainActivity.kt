@@ -30,6 +30,14 @@ class MainActivity : AppCompatActivity() {
         autoConnect = findViewById(R.id.autoConnect); connect = findViewById(R.id.connect)
 
         hubUrl.setText(Prefs.hubUrl(this).ifEmpty { BuildConfig.DEFAULT_HUB_URL }); deviceName.setText(Prefs.name(this)); token.setText(Prefs.token(this)); autoConnect.isChecked = Prefs.autoConnect(this)
+        findViewById<CheckBox>(R.id.otpAllowed).apply {
+            isChecked = Prefs.otpAllowed(this@MainActivity)
+            setOnCheckedChangeListener { _, checked -> Prefs.setOtpAllowed(this@MainActivity, checked) }
+        }
+        findViewById<CheckBox>(R.id.backgroundOnly).apply {
+            isChecked = Prefs.backgroundOnly(this@MainActivity)
+            setOnCheckedChangeListener { _, checked -> Prefs.setBackgroundOnly(this@MainActivity, checked) }
+        }
         findViewById<Button>(R.id.appInfo).setOnClickListener {
             startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
         }

@@ -10,3 +10,6 @@ await esbuild.build({ ...shared, entryPoints: [join(root, 'src/hub.ts')], outfil
 
 // Self-contained stdio server for the Claude Code plugin: dependencies inlined, no npm install needed.
 await esbuild.build({ ...shared, external: [], minify: false, entryPoints: [join(root, 'src/index.ts')], outfile: join(root, '../plugin/bin/mobilemcp.js'), banner: { js: '#!/usr/bin/env node' } });
+
+// Self-contained durable job MCP adapter.
+await esbuild.build({ ...shared, external: [], entryPoints: [join(root, "src/agent.ts")], outfile: join(root, "dist/agent.js"), banner: { js: "#!/usr/bin/env node" } });

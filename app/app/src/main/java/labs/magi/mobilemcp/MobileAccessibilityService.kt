@@ -14,6 +14,7 @@ class MobileAccessibilityService : AccessibilityService() {
             private set
     }
 
+    lateinit var contexts: AppContexts; private set
     lateinit var hub: HubConnection; private set
     @Volatile var foregroundPackage: String? = null
     @Volatile var foregroundActivity: String? = null
@@ -26,6 +27,8 @@ class MobileAccessibilityService : AccessibilityService() {
             flags = flags or AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
         }
         instance = this
+        contexts = AppContexts(this)
+        contexts.start()
         hub = HubConnection(this, Dispatcher(this))
         Status.set("Service on")
         if (Prefs.autoConnect(this) && Prefs.hubUrl(this).isNotBlank()) hub.connect()
@@ -48,7 +51,8 @@ class MobileAccessibilityService : AccessibilityService() {
     override fun onInterrupt() {}
 
     override fun onUnbind(intent: android.content.Intent?): Boolean {
-        if (this::hub.isInitialized) hub.disconnect()
+        if (this::hub.isInitialized) hub.shutdown()
+        if (this::contexts.isInitialized) contexts.close()
         instance = null
         Status.set("Service off")
         return super.onUnbind(intent)

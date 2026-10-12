@@ -42,3 +42,23 @@ Not measured: model token counts (depends on the client), success rates on a ben
 - Automatic scroll-and-collect for long lists (one call returning all rows).
 - A `find` tool returning best matches for a label without a full snapshot (text targets cover most of this).
 - Screenshot diffing / change-only images.
+
+## Background read queue (preview implementation)
+
+Notification reads, launchable-app lists, execution policy and compact battery/lock status use a separate read queue. They no longer queue behind UI waits. The new compact status does not traverse accessibility windows or inspect the user's foreground app. Mutations remain serialized. Background-only mode blocks all UI operations before dispatch, including whole batches and pending-intent notification actions. On-device local authenticated-hub check: a compact status read completed in 22 ms while a concurrent UI wait lasted 3141 ms; status JSON was 150 bytes. This is one concurrency check, not a general speed benchmark. Hosted verification passed for compact status, launchable-app lists and filtered notification reads with the screen off/locked, plus rejection of app launches. `device.info` switches to compact status and the read queue only in background-only mode for compatibility with older hubs.
+
+## App registry verification
+
+On the Android 15 preview, a temporary probe package was installed, updated, then removed. Reading the persisted registry directly (without requesting reconciliation) confirmed creation, a changed fingerprint and removal from package events. The probe was removed afterward. Four CLI tests cover background notification execution, version invalidation, refusal to override Background only and rejection of an unguarded candidate tap. Android build/policy tests and TypeScript checks passed. Semantic Swiggy address navigation remains a draft requiring foreground learning; it is not a verified CLI/API integration.
+
+### Durable job adapter verification
+
+The standalone stdio adapter completed a real background status job with Background only enabled and fetched one app context without opening it. Seven MCP tools were discovered. Queue fixture checks cover idempotency/conflicts, queued cancellation, notification scope, parameter validation, device pinning, completion and interrupted-worker recovery. Four existing app-route safety tests also pass. This measures correctness, not a throughput or battery benchmark.
+
+### OTP gate verification
+
+Eight extractor/gate tests cover accepted fresh codes, disabled and expired permission, purpose/source/package/challenge scope, freshness/sender/service filtering, ambiguous numbers/codes, email normalization and non-OTP messages. A real stdio adapter fixture discovers ten tools, extracts a synthetic email code and confirms revocation blocks notification access before provider reads. Typecheck/build and the existing four route tests plus queue checks pass. Live phone testing was unavailable because the hosted hub returned HTTP 504; no real OTP was read for testing.
+
+### v0.5.0 phone OTP toggle
+
+OTP is off by default on Android. Dedicated permission queries use the existing notifications.list bridge with otpPermission:true and return only otpAllowed. Tagged OTP notification reads enforce the toggle in the Android dispatcher. The local broker checks the toggle for both email and notification sources and fails closed on absent support or disconnection. Thirteen Python tests, queue invariant checks, three Android execution-policy tests, stdio OTP fixtures, server typecheck/build and release builds passed. No connected USB device was available for this release; on-device toggle interaction remains unverified.

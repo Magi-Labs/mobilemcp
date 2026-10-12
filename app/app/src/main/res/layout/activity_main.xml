@@ -25,6 +25,16 @@
         <CheckBox android:id="@+id/autoConnect" android:layout_width="match_parent" android:layout_height="wrap_content"
             android:layout_marginTop="8dp" android:text="Connect automatically when the service starts" />
 
+        <CheckBox android:id="@+id/backgroundOnly" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="Background only — let me keep using my phone" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:textSize="13sp"
+            android:text="Allows app lists, notification reads and dismissal, and system controls. Blocks screen reads, taps, typing, app launches and notification actions. Turn off to allow screen automation." />
+
+        <CheckBox android:id="@+id/otpAllowed" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="Allow OTP reading for authorized tasks" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:textSize="13sp"
+            android:text="Off by default. Lets OTP tools retrieve a recent matching code for tasks you authorize. Turn off to revoke. Requires notification access for phone messages; email still requires a connected mail account. General notification access is a separate permission." />
+
         <Button android:id="@+id/appInfo" android:layout_width="match_parent" android:layout_height="wrap_content"
             android:layout_marginTop="16dp" android:text="App info (allow restricted settings)" />
         <Button android:id="@+id/enableService" android:layout_width="match_parent" android:layout_height="wrap_content"

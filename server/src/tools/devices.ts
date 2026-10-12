@@ -12,8 +12,16 @@ export function registerDeviceTools(mcp: McpServer, bridge: Bridge): void {
     description: 'Select the phone this session controls. Refs from another device are invalid afterwards.',
     inputSchema: { deviceId: z.string().min(8).max(100) },
   }, async ({ deviceId }) => { try { return okJson(await bridge.selectDevice(deviceId)); } catch (e) { return errText(String(e)); } });
+  mcp.registerTool('get_background_status', {
+    description: 'Read battery, lock state and background mode without inspecting or waking the screen. Uses a separate read queue so UI waits do not delay it.',
+    inputSchema: {},
+  }, async () => bridgeCall(bridge, 'device.status'));
+  mcp.registerTool('get_execution_policy', {
+    description: 'Read the phone-owned Background only policy and allowed bridge actions. Change the mode locally in the phone app; agents cannot override it.',
+    inputSchema: {},
+  }, async () => bridgeCall(bridge, 'device.executionPolicy'));
   mcp.registerTool('get_device_info', {
-    description: 'Phone model, Android version, screen size/orientation, battery, keyboard visibility and the foreground app/activity.',
+    description: 'Phone details in screen mode. In Background only mode returns compact battery/lock status without inspecting the foreground app.',
     inputSchema: {},
   }, async () => bridgeCall(bridge, 'device.info'));
 }

@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "enabled": false,
+  "sources": [
+    "notification",
+    "email"
+  ],
+  "packages": [
+    "com.google.android.apps.messaging",
+    "com.google.android.gm"
+  ],
+  "purposes": [
+    "sign_in",
+    "verify_contact",
+    "complete_authorized_task"
+  ],
+  "maxAgeSeconds": 300,
+  "expiresAt": null
+}

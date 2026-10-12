@@ -30,7 +30,7 @@ docs/                    ARCHITECTURE.md, decisions/, THIRD_PARTY.md, STANDARDS.
 
 - `npm ci && npm run typecheck && npm run build` must pass before a commit that touches `server/` or `shared/`. The build also regenerates `plugin/bin/mobilemcp.js` (committed, distribution artifact).
 - `cd app && ./gradlew :app:assembleDebug` for the app. Release APKs for GitHub are built without `-PdefaultHubUrl`.
-- Verification is by driving a device: `STEPS='[["get_device_info"]]' node server/test/e2e.mjs` against the local hub + emulator, or `e2e-http.mjs` against a hosted hub. There is no unit-test suite; say so in PRs rather than implying one ran.
+- Verification is by driving a device: `STEPS='[["get_device_info"]]' node server/test/e2e.mjs` against the local hub + emulator, or `e2e-http.mjs` against a hosted hub. Run `python3 -m unittest discover -s tools/tests`, `node server/test/otp-e2e.mjs`, and `cd app && ./gradlew :app:testDebugUnitTest` for the local agent and execution-policy checks. Device verification is separate; report when unavailable.
 - Record measured observation sizes or step counts in `OPTIMIZATIONS.md` when changing the snapshot format or tool surface.
 
 ## UI and dependencies

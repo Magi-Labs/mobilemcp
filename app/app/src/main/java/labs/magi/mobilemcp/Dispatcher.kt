@@ -16,8 +16,15 @@ class Dispatcher(private val svc: MobileAccessibilityService) {
     fun handle(action: String, params: JSONObject): JSONObject {
         val deadline = Deadline.from(params)
         if (deadline.expired()) fail("DEADLINE", "Request expired while queued behind another action")
+        if (!ExecutionPolicy.allowed(action, Prefs.backgroundOnly(svc))) {
+            fail("BACKGROUND_ONLY", "This action uses the screen. Turn off Background only in the phone app to allow it.")
+        }
         return when (action) {
-            "device.info" -> info()
+            "device.status" -> status()
+            "device.executionPolicy" -> JSONObject()
+                .put("backgroundOnly", Prefs.backgroundOnly(svc))
+                .put("allowedActions", JSONArray(ExecutionPolicy.backgroundActions.sorted()))
+            "device.info" -> if (Prefs.backgroundOnly(svc)) status() else info()
             "screen.snapshot" -> snapshot(params)
             "screen.screenshot" -> screenshot(params)
             "screen.waitFor" -> obs.waitFor(params, deadline)
@@ -30,7 +37,13 @@ class Dispatcher(private val svc: MobileAccessibilityService) {
             "interact.scrollUntil" -> observed(params) { inter.scrollUntil(params, deadline).also { if (it.has("error")) throw ActionError(it.getString("error")) } }
             "screen.readText" -> obs.readText(params)
             "apps.uninstall" -> observed(params, launch = true) { sys.uninstall(params.optString("package", "")) }
-            "notifications.list" -> MobileNotificationListener.require().list(params.optString("package", ""), params.optString("query", ""), params.optInt("limit", 30), params.optBoolean("includeOngoing", false))
+            "notifications.list" -> {
+                if (params.optBoolean("otpPermission", false)) JSONObject().put("otpAllowed", Prefs.otpAllowed(svc))
+                else {
+                    if (params.optBoolean("otp", false) && !Prefs.otpAllowed(svc)) fail("OTP_PERMISSION_REQUIRED", "Enable Allow OTP reading in the phone app.")
+                    MobileNotificationListener.require().list(params.optString("package", ""), params.optString("query", ""), params.optInt("limit", 30), params.optBoolean("includeOngoing", false))
+                }
+            }
             "notifications.open" -> observed(params, launch = true) { MobileNotificationListener.require().open(params.optString("key", "")) }
             "notifications.act" -> MobileNotificationListener.require().act(params.optString("key", ""), params.opt("action") ?: 0, params.optString("text", "").ifEmpty { null })
             "notifications.dismiss" -> MobileNotificationListener.require().dismiss(params.optString("key", "").ifEmpty { null }, params.optBoolean("all", false))
@@ -46,7 +59,7 @@ class Dispatcher(private val svc: MobileAccessibilityService) {
             "interact.scroll" -> observed(params) { inter.scroll(params) }
             "interact.key" -> observed(params, launch = true) { inter.key(params) }
             "interact.setClipboard" -> inter.setClipboard(params.optString("text", ""))
-            "apps.list" -> apps.list(params.optString("query", ""), params.optInt("limit", 100))
+            "apps.list" -> if (params.optBoolean("context", false)) svc.contexts.list(params.optString("query", ""), params.optInt("limit", 100)) else apps.list(params.optString("query", ""), params.optInt("limit", 100))
             "apps.open" -> observed(params) { apps.open(params.optString("app", "")) }
             "apps.openUrl" -> observed(params) { apps.openUrl(params.optString("url", "")) }
             "device.batch" -> batch(params, deadline)
@@ -72,13 +85,23 @@ class Dispatcher(private val svc: MobileAccessibilityService) {
         val started = System.currentTimeMillis()
         val result = block()
         result.put("elapsedMs", System.currentTimeMillis() - started)
-        if (params.optBoolean("observe", true)) {
+        if (params.optBoolean("observe", true) && !Prefs.backgroundOnly(svc)) {
             obs.settle(since = started, window = launch)
             val opts = JSONObject().put("maxNodes", params.optInt("maxNodes", 30)).put("maxChars", params.optInt("maxChars", 1500))
             params.optString("observationScope", "").takeIf { it.isNotEmpty() }?.let { opts.put("scope", it) }
             result.put("observation", try { obs.snapshot(opts, compact = true) } catch (e: ActionError) { JSONObject().put("error", e.message) })
         }
         return result
+    }
+
+    private fun status(): JSONObject {
+        val bm = svc.getSystemService(BatteryManager::class.java)
+        return JSONObject().put("model", Build.MODEL).put("android", Build.VERSION.RELEASE)
+            .put("interactive", svc.getSystemService(android.os.PowerManager::class.java).isInteractive)
+            .put("locked", svc.getSystemService(android.app.KeyguardManager::class.java).isKeyguardLocked)
+            .put("battery", bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY))
+            .put("charging", bm.isCharging).put("appVersion", BuildConfig.VERSION_NAME)
+            .put("backgroundOnly", Prefs.backgroundOnly(svc)).put("keepCpuAwakeDuringWork", true)
     }
 
     private fun info(): JSONObject {
@@ -103,6 +126,7 @@ class Dispatcher(private val svc: MobileAccessibilityService) {
         if (steps.length() == 0 || steps.length() > 20) fail("BAD_ARGS", "1-20 steps")
         val results = JSONArray(); var error: String? = null; var completed = 0
         for (i in 0 until steps.length()) {
+            if (Prefs.backgroundOnly(svc)) { error = "BACKGROUND_ONLY: mode changed before step $i"; break }
             val step = steps.getJSONObject(i); val kind = step.optString("action", "")
             if (deadline.remaining < 500) { error = "BATCH_TIMEOUT: budget exhausted before step $i ($kind)"; break }
             val stepStart = System.currentTimeMillis()
@@ -132,7 +156,7 @@ class Dispatcher(private val svc: MobileAccessibilityService) {
         }
         val result = JSONObject().put("completed", completed).put("total", steps.length()).put("results", results)
         if (error != null) result.put("error", error)
-        if (params.optBoolean("observe", true)) {
+        if (params.optBoolean("observe", true) && !Prefs.backgroundOnly(svc)) {
             val opts = JSONObject().put("maxNodes", params.optInt("maxNodes", 30)).put("maxChars", params.optInt("maxChars", 1500))
             params.optString("observationScope", "").takeIf { it.isNotEmpty() }?.let { opts.put("scope", it) }
             result.put("observation", try { obs.snapshot(opts, compact = true) } catch (e: ActionError) { JSONObject().put("error", e.message) })

@@ -25,6 +25,7 @@ class HubConnection(private val ctx: Context, private val dispatcher: Dispatcher
         .readTimeout(0, TimeUnit.MILLISECONDS)
         .build()
     private val executor = Executors.newSingleThreadExecutor { r -> Thread(r, "mobilemcp-actions") }
+    private val readExecutor = Executors.newSingleThreadExecutor { r -> Thread(r, "mobilemcp-background-reads") }
     private val main = Handler(Looper.getMainLooper())
     private val reconnectRunnable = Runnable { open() }
 
@@ -46,6 +47,12 @@ class HubConnection(private val ctx: Context, private val dispatcher: Dispatcher
         enabled = false; main.removeCallbacks(reconnectRunnable)
         ws?.close(1000, "disconnect"); ws = null; connected = false
         Status.set("Disconnected")
+    }
+
+    fun shutdown() {
+        disconnect()
+        executor.shutdownNow()
+        readExecutor.shutdownNow()
     }
 
     private fun open() {
@@ -96,13 +103,19 @@ class HubConnection(private val ctx: Context, private val dispatcher: Dispatcher
             val id = msg.optString("id", ""); val action = msg.optString("action", "")
             if (id.isEmpty() || action.isEmpty()) return
             val params = msg.optJSONObject("params") ?: JSONObject()
-            executor.execute {
+            val worker = if (action in ExecutionPolicy.readActions || (action == "device.info" && Prefs.backgroundOnly(ctx))) readExecutor else executor
+            worker.execute {
                 val started = System.currentTimeMillis()
                 val response = JSONObject().put("id", id)
+                val power = ctx.getSystemService(android.os.PowerManager::class.java)
+                val wake = power.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "mobilemcp:active-command")
+                wake.acquire(65_000L)
                 try {
                     response.put("result", dispatcher.handle(action, params))
                 } catch (e: Throwable) {
                     response.put("error", e.message ?: e.toString())
+                } finally {
+                    if (wake.isHeld) wake.release()
                 }
                 Status.log("$action ${System.currentTimeMillis() - started}ms${if (response.has("error")) " ✗ " + response.optString("error").take(80) else ""}")
                 webSocket.send(response.toString())

@@ -13341,6 +13341,7 @@ import { randomUUID } from "node:crypto";
 // ../shared/src/protocol.ts
 var clamp = (v, lo, hi, dflt) => Math.min(hi, Math.max(lo, Number(v ?? dflt) || dflt));
 function executionBudget(action, params) {
+  if (action === "device.status" || action === "device.executionPolicy") return 5e3;
   if (action === "device.batch") return clamp(params.timeout, 1e3, 6e4, 6e4);
   if (action === "screen.waitFor") return clamp(params.timeout, 1e3, 6e4, 1e4) + 2e3;
   if (action === "interact.scrollUntil") return clamp(params.timeout, 1e3, 6e4, 2e4) + 2e3;
@@ -21683,8 +21684,16 @@ function registerDeviceTools(mcp, bridge) {
       return errText(String(e));
     }
   });
+  mcp.registerTool("get_background_status", {
+    description: "Read battery, lock state and background mode without inspecting or waking the screen. Uses a separate read queue so UI waits do not delay it.",
+    inputSchema: {}
+  }, async () => bridgeCall(bridge, "device.status"));
+  mcp.registerTool("get_execution_policy", {
+    description: "Read the phone-owned Background only policy and allowed bridge actions. Change the mode locally in the phone app; agents cannot override it.",
+    inputSchema: {}
+  }, async () => bridgeCall(bridge, "device.executionPolicy"));
   mcp.registerTool("get_device_info", {
-    description: "Phone model, Android version, screen size/orientation, battery, keyboard visibility and the foreground app/activity.",
+    description: "Phone details in screen mode. In Background only mode returns compact battery/lock status without inspecting the foreground app.",
     inputSchema: {}
   }, async () => bridgeCall(bridge, "device.info"));
 }
@@ -21823,6 +21832,10 @@ function registerInteractTools(mcp, bridge) {
 
 // src/tools/apps.ts
 function registerAppTools(mcp, bridge) {
+  mcp.registerTool("get_app_context", {
+    description: "Versioned Android app metadata and shortcut candidates. Refreshed on installs/updates/removal and reconciliation. Exported components are unverified candidates, not usable APIs. Does not launch or explore apps.",
+    inputSchema: { query: external_exports.string().max(200).optional(), limit: external_exports.number().int().min(1).max(500).optional() }
+  }, async (args) => bridgeCall(bridge, "apps.list", { ...args, context: true }));
   mcp.registerTool("list_apps", {
     description: "Installed launchable apps as {package,label}. Filter with query.",
     inputSchema: { query: external_exports.string().max(100).optional(), limit: external_exports.number().int().min(1).max(500).optional().describe("Default 100.") }
@@ -21920,6 +21933,7 @@ function registerBatchTools(mcp, bridge) {
 
 // src/tools/notifications.ts
 function registerNotificationTools(mcp, bridge) {
+  mcp.registerTool("get_otp_permission", { description: "Read the phone-owned OTP toggle without reading notifications. Agents cannot change it. Missing otpAllowed means an older app must be updated.", inputSchema: {} }, async () => bridgeCall(bridge, "notifications.list", { otpPermission: true }));
   mcp.registerTool("get_notifications", {
     description: "Active notifications (newest first): key, app, title, text, time, ongoing flag and available actions (with whether an action accepts a reply). Needs notification access granted in the app. Filter by package or text.",
     inputSchema: { package: external_exports.string().max(200).optional(), query: external_exports.string().max(200).optional(), limit: external_exports.number().int().min(1).max(100).optional().describe("Default 30."), includeOngoing: external_exports.boolean().optional().describe("Include persistent/ongoing notifications; default false.") }

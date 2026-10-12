@@ -20,3 +20,9 @@ app/.kotlin
 __pycache__/
 *.pyc
 [\[]*
+
+# Private local agent state
+phone-jobs.sqlite*
+phone-app-registry.json
+phone-app-flows.json
+otp-permissions.json
